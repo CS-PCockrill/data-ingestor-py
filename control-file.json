@@ -30,7 +30,7 @@
     "json_hash": "JSON_HASH",
     "local_id": "LOCAL_ID",
     "filename": "FILENAME",
-    "fnumber": "F_NUMBER",
+    "fnumber": "FNUMBER",
     "scan_time": "SCAN_TIME"
   }
 }
