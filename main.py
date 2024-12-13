@@ -257,7 +257,7 @@ def batch_insert_records(conn, table_name, records):
             columns = records[0].keys()
             query = 'INSERT INTO {} ({}) VALUES %s'.format(
                 table_name,
-                ', '.join('"{}"'.format(col) for col in columns)
+                ', '.join('"{}"'.format(col.lower()) for col in columns)
             )
 
             # Prepare values for all records
