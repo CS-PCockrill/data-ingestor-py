@@ -255,7 +255,10 @@ def batch_insert_records(conn, table_name, records):
         with conn.cursor() as cur:
             # Extract columns from the first record
             columns = records[0].keys()
-            query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES %s"
+            query = 'INSERT INTO {} ({}) VALUES %s'.format(
+                table_name,
+                ', '.join('"{}"'.format(col) for col in columns)
+            )
 
             # Prepare values for all records
             values = [[record[col] for col in columns] for record in records]
