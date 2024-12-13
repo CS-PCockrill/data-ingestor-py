@@ -1,5 +1,6 @@
 import json
 import csv
+import argparse
 import xml.etree.ElementTree as ET
 import psycopg2
 from psycopg2.extras import execute_values
@@ -275,38 +276,37 @@ def batch_insert_records(conn, table_name, records):
 
 # Example Usage
 if __name__ == "__main__":
-    # Example JSON
-    json_file_path = "test-loader.json"
+    # Parse arguments
+    parser = argparse.ArgumentParser(description="Process JSON or XML file based on input flags.")
+    parser.add_argument("-file", required=True, help="Path to the input file (JSON or XML).")
+    parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
+    args = parser.parse_args()
 
-    # Example XML
-    xml_file_path = "test-loader.xml"
+    # Determine file type from the file extension
+    file_path = args.file
+    file_type = "json" if file_path.lower().endswith(".json") else "xml" if file_path.lower().endswith(".xml") else None
+    if not file_type:
+        raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
 
-    # Control Config File
-    config_path = "control-file.json"
+    # Load configuration file
+    config_path = args.config
     config = load_json_mapping(config_path)
-    print(config)
+    print("Loaded configuration:", config)
 
     # Connect to PostgreSQL
     conn = connect_to_postgres(config)
+    print("Connected to PostgreSQL.")
 
     # Transform and validate records
-    transformed_records = transform_and_validate_records(process_file(json_file_path, schema_tag=config["jsonTagName"], file_type="json"), config['jsonSchema'])
+    transformed_records = transform_and_validate_records(process_file(file_path, schema_tag=config[f"{file_type}TagName"], file_type=file_type), config[f"{file_type}Schema"])
     print("Transformed records (JSON):")
     for record in transformed_records:
         print(record)
 
-
-    # Transform and validate records
-    transformed_records = transform_and_validate_records(process_file(xml_file_path, schema_tag=config["xmlTagName"], file_type="xml"), config['xmlSchema'])
-    print("Transformed records (XML):")
-    for record in transformed_records:
-        print(record)
-
-
     write_records_to_csv(transformed_records, "output.csv")
 
     # Insert Records
-    batch_insert_records(conn, "SFLW_RECS", transformed_records)
+    batch_insert_records(conn, config["tableName"], transformed_records)
 
     # Close the connection
     conn.close()
