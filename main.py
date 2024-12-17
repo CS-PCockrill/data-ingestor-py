@@ -1,5 +1,6 @@
 import json
 import csv
+import shutil
 import argparse
 import os.path
 import xml.etree.ElementTree as ET
@@ -278,6 +279,7 @@ if __name__ == "__main__":
 
     schema_tag = config[f"{file_type}TagName"]
     key_column_mapping = config[f"{file_type}Schema"]
+    output_directory = config["outputDirectory"]
 
     # Initialize database connection and queue
     conn = connect_to_postgres(config)
@@ -308,4 +310,15 @@ if __name__ == "__main__":
     record_queue.join()  # Ensure all tasks are processed
     consumer_thread.join()
 
+    # Move the processed file to the output directory
+    try:
+        os.makedirs(output_directory, exist_ok=True)  # Ensure the directory exists
+        destination_path = os.path.join(output_directory, os.path.basename(file_path))
+        shutil.move(file_path, destination_path)
+        logging.info(f"Input file moved to: {destination_path}")
+    except Exception as e:
+        logging.error(f"Failed to move input file to {output_directory}: {e}")
+
+    # Clean up
     conn.close()
+    logging.info("Processing completed successfully.")
