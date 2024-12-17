@@ -287,16 +287,15 @@ if __name__ == "__main__":
     def producer():
         """Producer thread to parse file and add records to the queue."""
         logging.info("Starting producer...")
-        process_file(file_path, schema_tag=schema_tag, file_type=file_type, output_queue=record_queue)
+        for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
+            record_queue.put(record)  # Add records to the queue
+        record_queue.put(None)  # Signal end of records
         logging.info("Producer finished processing the file.")
-
 
     def consumer():
         """Consumer thread to transform and insert records into the database."""
         logging.info("Starting consumer...")
         consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
-        logging.info("Consumer finished processing records.")
-
 
     # Start producer and consumer threads
     producer_thread = Thread(target=producer)
@@ -307,8 +306,7 @@ if __name__ == "__main__":
     consumer_thread.start()
 
     producer_thread.join()
+    record_queue.join()  # Ensure all tasks are processed
     consumer_thread.join()
 
-    # Clean up
     conn.close()
-    logging.info("Processing completed successfully.")
