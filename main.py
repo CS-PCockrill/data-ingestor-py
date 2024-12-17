@@ -222,6 +222,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
     while True:
         record = queue.get()
         if record is None:  # End of data
+            queue.task_done()
             break
 
         logging.info(f"Received record: {record}")
@@ -231,6 +232,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
             transformed_record[db_column] = record.get(json_key)
 
         batch.append(transformed_record)
+        queue.task_done()
 
         # Perform batch insert when enough records are collected
         if len(batch) >= 5:
@@ -240,6 +242,8 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
     # Insert any remaining records
     if batch:
         batch_insert_records(conn, table_name, batch)
+    logging.info("Consumer finished processing.")
+
 
 
 if __name__ == "__main__":
