@@ -3,6 +3,7 @@ import argparse
 import logging
 import json
 import os
+from config.config import INTERFACE_IDS
 
 def load_json_mapping(file_path):
     """Load key-value mapping from a JSON file into a dictionary."""
@@ -85,17 +86,21 @@ if __name__ == "__main__":
     # and a configuration file with table information, schema, and connection details (-config)
     parser = argparse.ArgumentParser(description="Process Excel file based on input flags.")
     parser.add_argument("-file", required=True, help="Path to the input file (Excel).")
-    parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
+    parser.add_argument("-interface_id", required=True, help="Interface ID")
     args = parser.parse_args()
 
-    file_path = args.file
+    if not args.interface_id in INTERFACE_IDS:
+        logging.error(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+        raise ValueError(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+
+    logging.info(f"Interface ID: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+    config = load_json_mapping(INTERFACE_IDS[args.interface_id])
+
+    file_path = str(os.path.join(config["inputDirectory"], args.file))
     file_type = "xlsx" if file_path.lower().endswith(".xlsx") else "xls" if file_path.lower().endswith(".xls") else None
     if not file_type:
         logging.error("Unsupported file type. The input file must have a .xlsx or .xls extension.")
         raise ValueError("Unsupported file type. The input file must have a .xlsx or .xls extension.")
-
-    config_path = args.config
-    config = load_json_mapping(config_path)
 
     output_csv = "output-dms.csv"  # Replace with desired CSV output path
 
@@ -106,4 +111,4 @@ if __name__ == "__main__":
     headers, data = get_headers_and_data(df, header_row=3)
 
     # Write data to CSV
-    write_data_to_csv(data, os.path.join(config["outputDirectory"], "output.csv"))
+    write_data_to_csv(data, os.path.join(config["outputDirectory"], output_csv))

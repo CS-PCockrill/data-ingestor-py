@@ -149,6 +149,8 @@ def write_records_to_csv(records, output_file_path):
     headers = list(records[0].keys())
 
     try:
+        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+
         with open(output_file_path, mode='w', newline='', encoding='utf-8') as file:
             writer = csv.DictWriter(file, fieldnames=headers)
             writer.writeheader()
@@ -214,7 +216,7 @@ if __name__ == "__main__":
     # config_path = args.config
     config = load_json_mapping(INTERFACE_IDS[args.interface_id])
 
-    file_path = os.path.join(config["inputDirectory"], args.file)
+    file_path = str(os.path.join(config["inputDirectory"], args.file))
     file_type = "json" if file_path.lower().endswith(".json") else "xml" if file_path.lower().endswith(".xml") else None
     if not file_type:
         logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
