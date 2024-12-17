@@ -112,13 +112,29 @@ def parse_xml_file(file_path, schema_tag="Record"):
             yield record
 
 def process_file(file_path, schema_tag, file_type="json", output_queue=None):
-    """Processes a file (JSON or XML), flattens records, and optionally queues them."""
+    """
+    Processes a file (JSON or XML), flattens records, and optionally queues them.
+
+    Args:
+        file_path (str): Path to the input file.
+        schema_tag (str): The schema tag name for JSON/XML records.
+        file_type (str): Either 'json' or 'xml' to specify file type.
+        output_queue (queue.Queue): Optional queue to stream records to a consumer.
+    """
     parser = parse_json_file if file_type == "json" else parse_xml_file
+
+    # Iterate over flattened records and handle queueing or serial processing
     for record in parser(file_path, schema_tag=schema_tag):
         if output_queue:
-            output_queue.put(record)  # Queue for concurrent processing
+            # Put records into the queue for streaming/parallel processing
+            output_queue.put(record)
         else:
-            yield record  # Stream record as generator
+            # Yield records sequentially (streaming)
+            yield record
+
+    # Signal queue consumers that the file processing is complete
+    if output_queue:
+        output_queue.put(None)
 
 def transform_and_validate_records(records, key_column_mapping):
     """Transform and validate a list of records based on a key-column mapping."""
@@ -200,17 +216,6 @@ def batch_insert_records(conn, table_name, records):
         conn.rollback()
         raise
 
-
-# import os
-# import csv
-# import json
-# import logging
-# import psycopg2
-# import xml.etree.ElementTree as ET
-# from queue import Queue
-# from threading import Thread
-# from psycopg2.extras import execute_values
-
 BATCH_SIZE = 1000  # Number of records per batch
 
 def parse_file(file_path, schema_tag, file_type, output_queue):
@@ -260,43 +265,6 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
         batch_insert_records(conn, table_name, batch)
 
 
-# if __name__ == "__main__":
-#     # flags for a JSON or XML input file (-file)
-#     # and a configuration file with table information, schema, and connection details (-config)
-#     parser = argparse.ArgumentParser(description="Process JSON or XML file based on input flags.")
-#     parser.add_argument("-file", required=True, help="Path to the input file (JSON or XML).")
-#     # parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
-#     parser.add_argument("-interface_id", required=True, help="Interface ID")
-#     args = parser.parse_args()
-#
-#     if not args.interface_id in INTERFACE_IDS:
-#         logging.error(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
-#         raise ValueError(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
-#
-#     logging.info(f"Interface ID: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
-#     # config_path = args.config
-#     config = load_json_mapping(INTERFACE_IDS[args.interface_id])
-#
-#     file_path = str(os.path.join(config["inputDirectory"], args.file))
-#     file_type = "json" if file_path.lower().endswith(".json") else "xml" if file_path.lower().endswith(".xml") else None
-#     if not file_type:
-#         logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
-#         raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
-#
-#     conn = connect_to_postgres(config)
-#
-#     transformed_records = transform_and_validate_records(
-#         process_file(file_path, schema_tag=config[f"{file_type}TagName"], file_type=file_type),
-#         config[f"{file_type}Schema"]
-#     )
-#
-#     write_records_to_csv(transformed_records, os.path.join(config["outputDirectory"], "output.csv"))
-#
-#     batch_insert_records(conn, config["tableName"], transformed_records)
-#
-#     conn.close()
-#     logging.info("Database connection closed.")
-
 if __name__ == "__main__":
     import argparse
 
@@ -330,15 +298,28 @@ if __name__ == "__main__":
     schema_tag = config.get(f"{file_type}TagName", "Records")
     key_column_mapping = config.get(f"{file_type}Schema")
 
-    # Initialize the database connection and queue
+    # Initialize database connection and queue
     conn = connect_to_postgres(config)
     record_queue = Queue(maxsize=BATCH_SIZE * 2)
 
-    # Start producer (parsing file) and consumer (transform and insert)
-    producer_thread = Thread(target=parse_file, args=(file_path, schema_tag, file_type, record_queue))
-    consumer_thread = Thread(target=consumer_transform_and_insert, args=(
-        record_queue, conn, config["tableName"], key_column_mapping
-    ))
+
+    def producer():
+        """Producer thread to parse file and add records to the queue."""
+        logging.info("Starting producer...")
+        process_file(file_path, schema_tag=schema_tag, file_type=file_type, output_queue=record_queue)
+        logging.info("Producer finished processing the file.")
+
+
+    def consumer():
+        """Consumer thread to transform and insert records into the database."""
+        logging.info("Starting consumer...")
+        consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
+        logging.info("Consumer finished processing records.")
+
+
+    # Start producer and consumer threads
+    producer_thread = Thread(target=producer)
+    consumer_thread = Thread(target=consumer)
 
     logging.info(f"Starting processing for interface ID: {args.interface_id}")
     producer_thread.start()
@@ -347,5 +328,6 @@ if __name__ == "__main__":
     producer_thread.join()
     consumer_thread.join()
 
+    # Clean up
     conn.close()
     logging.info("Processing completed successfully.")
