@@ -248,6 +248,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
         if record is None:  # End of data
             break
 
+        logging.info(f"Received record: {record}")
         # Transform record
         transformed_record = {}
         for json_key, db_column in key_column_mapping.items():
