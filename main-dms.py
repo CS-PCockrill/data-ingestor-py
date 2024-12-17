@@ -1,6 +1,22 @@
 import pandas as pd
 import argparse
 import logging
+import json
+import os
+
+def load_json_mapping(file_path):
+    """Load key-value mapping from a JSON file into a dictionary."""
+    try:
+        with open(file_path, 'r') as file:
+            mapping = json.load(file)
+            logging.info(f"Successfully loaded JSON mapping from {file_path}")
+            return mapping
+    except FileNotFoundError:
+        logging.error(f"Mapping file not found at {file_path}")
+        raise
+    except json.JSONDecodeError as e:
+        logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
+        raise
 
 def load_excel_file(file_path):
     """
@@ -78,6 +94,9 @@ if __name__ == "__main__":
         logging.error("Unsupported file type. The input file must have a .xlsx or .xls extension.")
         raise ValueError("Unsupported file type. The input file must have a .xlsx or .xls extension.")
 
+    config_path = args.config
+    config = load_json_mapping(config_path)
+
     output_csv = "output-dms.csv"  # Replace with desired CSV output path
 
     # Load Excel file
@@ -87,4 +106,4 @@ if __name__ == "__main__":
     headers, data = get_headers_and_data(df, header_row=3)
 
     # Write data to CSV
-    write_data_to_csv(data, output_csv)
+    write_data_to_csv(data, os.path.join(config["outputDirectory"], "output.csv"))

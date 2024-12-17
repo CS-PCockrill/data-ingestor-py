@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 import psycopg2
 from psycopg2.extras import execute_values
 import logging
+# INTERFACE_IDS is a key value list of interface IDs to their respective control config file path
+from config.config import INTERFACE_IDS
 
 # Configure logging
 logging.basicConfig(
@@ -201,6 +203,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Process JSON or XML file based on input flags.")
     parser.add_argument("-file", required=True, help="Path to the input file (JSON or XML).")
     parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
+    parser.add_argument("-interface_id", required=True, help="Interface ID")
     args = parser.parse_args()
 
     file_path = args.file
@@ -209,8 +212,13 @@ if __name__ == "__main__":
         logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
         raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
 
-    config_path = args.config
-    config = load_json_mapping(config_path)
+    if not args.interface_id in INTERFACE_IDS:
+        logging.error(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+        raise ValueError(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+
+    logging.info(f"Interface ID: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+    # config_path = args.config
+    config = load_json_mapping(INTERFACE_IDS[args.interface_id])
 
     conn = connect_to_postgres(config)
 
