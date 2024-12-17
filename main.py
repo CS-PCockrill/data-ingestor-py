@@ -216,30 +216,6 @@ def batch_insert_records(conn, table_name, records):
         conn.rollback()
         raise
 
-BATCH_SIZE = 1000  # Number of records per batch
-
-def parse_file(file_path, schema_tag, file_type, output_queue):
-    """Parses a JSON or XML file and streams flattened records into a queue."""
-    try:
-        if file_type == "json":
-            with open(file_path, "r") as file:
-                data = json.load(file)
-                records = data.get(schema_tag, data)
-                for record in (records if isinstance(records, list) else [records]):
-                    for flattened in flatten_dict(record):
-                        output_queue.put(flattened)
-        elif file_type == "xml":
-            tree = ET.parse(file_path)
-            root = tree.getroot()
-            for record_element in root.findall(f".//{schema_tag}"):
-                raw_record = {}
-                for child in record_element:
-                    raw_record[child.tag] = child.text
-                for flattened in flatten_dict(raw_record):
-                    output_queue.put(flattened)
-    finally:
-        output_queue.put(None)  # Signal end of parsing
-
 def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
     """Transforms records from the queue and inserts them into PostgreSQL in batches."""
     batch = []
@@ -257,7 +233,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
         batch.append(transformed_record)
 
         # Perform batch insert when enough records are collected
-        if len(batch) >= BATCH_SIZE:
+        if len(batch) >= 5:
             batch_insert_records(conn, table_name, batch)
             batch.clear()
 
@@ -301,7 +277,7 @@ if __name__ == "__main__":
 
     # Initialize database connection and queue
     conn = connect_to_postgres(config)
-    record_queue = Queue(maxsize=BATCH_SIZE * 2)
+    record_queue = Queue(maxsize=5 * 2)
 
 
     def producer():
