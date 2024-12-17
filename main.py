@@ -283,7 +283,6 @@ if __name__ == "__main__":
     conn = connect_to_postgres(config)
     record_queue = Queue(maxsize=5 * 2)
 
-
     def producer():
         """Producer thread to parse file and add records to the queue."""
         logging.info("Starting producer...")
