@@ -296,8 +296,8 @@ if __name__ == "__main__":
         logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
         raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
 
-    schema_tag = config.get(f"{file_type}TagName", "Records")
-    key_column_mapping = config.get(f"{file_type}Schema")
+    schema_tag = config[f"{file_type}TagName"]
+    key_column_mapping = config[f"{file_type}Schema"]
 
     # Initialize database connection and queue
     conn = connect_to_postgres(config)
