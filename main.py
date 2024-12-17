@@ -1,6 +1,7 @@
 import json
 import csv
 import argparse
+import os.path
 import xml.etree.ElementTree as ET
 import psycopg2
 from psycopg2.extras import execute_values
@@ -218,7 +219,7 @@ if __name__ == "__main__":
         config[f"{file_type}Schema"]
     )
 
-    write_records_to_csv(transformed_records, "output.csv")
+    write_records_to_csv(transformed_records, os.path.join(config["outputDirectory"], "output.csv"))
 
     batch_insert_records(conn, config["tableName"], transformed_records)
 

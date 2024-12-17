@@ -1,5 +1,6 @@
 import pandas as pd
-
+import argparse
+import logging
 
 def load_excel_file(file_path):
     """
@@ -64,11 +65,23 @@ def write_data_to_csv(data, output_file):
 
 # Example Usage
 if __name__ == "__main__":
-    excel_file = "dms-example.xlsx"  # Replace with your Excel file path
+    # flags for a JSON or XML input file (-file)
+    # and a configuration file with table information, schema, and connection details (-config)
+    parser = argparse.ArgumentParser(description="Process Excel file based on input flags.")
+    parser.add_argument("-file", required=True, help="Path to the input file (Excel).")
+    parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
+    args = parser.parse_args()
+
+    file_path = args.file
+    file_type = "xlsx" if file_path.lower().endswith(".xlsx") else "xls" if file_path.lower().endswith(".xls") else None
+    if not file_type:
+        logging.error("Unsupported file type. The input file must have a .xlsx or .xls extension.")
+        raise ValueError("Unsupported file type. The input file must have a .xlsx or .xls extension.")
+
     output_csv = "output-dms.csv"  # Replace with desired CSV output path
 
     # Load Excel file
-    df = load_excel_file(excel_file)
+    df = load_excel_file(file_path)
 
     # Extract headers and data
     headers, data = get_headers_and_data(df, header_row=3)
