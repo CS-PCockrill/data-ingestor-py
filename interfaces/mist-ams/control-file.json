@@ -1,6 +1,7 @@
 {
   "tableName": "SFLW_RECS",
-  "outputDirectory": "output_files",
+  "outputDirectory": "interfaces/mist-ams/archive",
+  "inputDirectory": "interfaces/mist-ams/input-files",
   "host": "localhost",
   "port": 5432,
   "database": "testdb",

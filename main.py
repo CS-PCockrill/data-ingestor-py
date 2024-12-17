@@ -202,15 +202,9 @@ if __name__ == "__main__":
     # and a configuration file with table information, schema, and connection details (-config)
     parser = argparse.ArgumentParser(description="Process JSON or XML file based on input flags.")
     parser.add_argument("-file", required=True, help="Path to the input file (JSON or XML).")
-    parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
+    # parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
     parser.add_argument("-interface_id", required=True, help="Interface ID")
     args = parser.parse_args()
-
-    file_path = args.file
-    file_type = "json" if file_path.lower().endswith(".json") else "xml" if file_path.lower().endswith(".xml") else None
-    if not file_type:
-        logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
-        raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
 
     if not args.interface_id in INTERFACE_IDS:
         logging.error(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
@@ -219,6 +213,12 @@ if __name__ == "__main__":
     logging.info(f"Interface ID: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
     # config_path = args.config
     config = load_json_mapping(INTERFACE_IDS[args.interface_id])
+
+    file_path = os.path.join(config["inputDirectory"], args.file)
+    file_type = "json" if file_path.lower().endswith(".json") else "xml" if file_path.lower().endswith(".xml") else None
+    if not file_type:
+        logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
+        raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
 
     conn = connect_to_postgres(config)
 
