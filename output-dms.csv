@@ -1,0 +1,17 @@
+ast_name,dt_submitted,status,json_hash,fnumber,dt_created,location,scan_time,local_id,filename,user
+AssetD,1698499500,Pending,hash101,FN00172,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,Jim Brown
+AssetD,1698499500,Pending,hash101,FN01128,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,Jim Brown
+AssetD,1698499500,Pending,hash101,FN01313,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,Scott Tey
+AssetD,1698499500,Pending,hash101,FN01309,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,Scott Tey
+AssetD,1698499500,Pending,hash101,FN01731,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,Mark Brown
+AssetD,1698499500,Pending,hash101,FN01318,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,Mark Brown
+AssetD,1698499500,Pending,hash101,FN0310,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,Michael Smith
+AssetD,1698499500,Pending,hash101,FN008013,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,Michael Smith
+AssetA,1698499500,Pending,hash101,FN01190,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,John Brown
+AssetA,1698499500,Pending,hash101,FN03100,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,John Brown
+AssetC,1698499500,Pending,hash101,FN0393,1698413100,Branch1,2024-12-05T11:00:00Z,local789,fileD.txt,Timothy Brown
+AssetC,1698499500,Pending,hash101,FN0109,1698413100,Branch1,2024-12-05T11:30:00Z,local789,fileD.txt,Timothy Brown
+AssetD,1698499500,Pending,hash101,FN0130,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,John Smalls
+AssetD,1698499500,Pending,hash101,FN0139,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,John Smalls
+AssetD,1698499500,Pending,hash101,FN00152,1698413100,Branch2,2024-12-05T11:00:00Z,local789,fileD.txt,Timothy Brown
+AssetD,1698499500,Pending,hash101,FN0201,1698413100,Branch2,2024-12-05T11:30:00Z,local789,fileD.txt,Timothy Brown

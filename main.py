@@ -195,6 +195,8 @@ def batch_insert_records(conn, table_name, records):
         raise
 
 if __name__ == "__main__":
+    # flags for a JSON or XML input file (-file)
+    # and a configuration file with table information, schema, and connection details (-config)
     parser = argparse.ArgumentParser(description="Process JSON or XML file based on input flags.")
     parser.add_argument("-file", required=True, help="Path to the input file (JSON or XML).")
     parser.add_argument("-config", required=True, help="Path to the configuration file (JSON).")
