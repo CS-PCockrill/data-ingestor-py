@@ -209,6 +209,7 @@ def batch_insert_records(conn, table_name, records):
                 ', '.join('"{}"'.format(col.lower()) for col in columns)
             )
             values = [[record[col] for col in columns] for record in records]
+            logging.info(f"Executing query: {query}\nValues: {values}\nTable Name: {table_name}")
             execute_values(cur, query, values)
             conn.commit()
             logging.info(f"Successfully inserted {len(records)} records into {table_name}.")
@@ -248,8 +249,6 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
 
 
 if __name__ == "__main__":
-    import argparse
-
     # Command-line arguments
     parser = argparse.ArgumentParser(description="Stream and process JSON/XML files.")
     parser.add_argument("-file", required=True, help="Path to input JSON/XML file.")
@@ -271,7 +270,7 @@ if __name__ == "__main__":
         raise
 
     # Determine file type and tags
-    file_path = os.path.join(config["inputDirectory"], args.file)
+    file_path = str(os.path.join(config["inputDirectory"], args.file))
     file_type = "json" if file_path.endswith(".json") else "xml" if file_path.endswith(".xml") else None
     if not file_type:
         logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
@@ -283,7 +282,7 @@ if __name__ == "__main__":
 
     # Initialize database connection and queue
     conn = connect_to_postgres(config)
-    record_queue = Queue(maxsize=5 * 2)
+    record_queue = Queue(maxsize=5*2)
 
     def producer():
         """Producer thread to parse file and add records to the queue."""
