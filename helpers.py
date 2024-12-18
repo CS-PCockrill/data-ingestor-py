@@ -16,15 +16,24 @@ def load_json_mapping(file_path):
         logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
         raise
 
+
 def move_file_to_folder(file_path, folder_path):
     import shutil
+    import os
 
-    shutil.move(file_path, folder_path)
-
-    # Move the processed file to the output directory
     try:
-        os.makedirs(folder_path, exist_ok=True)  # Ensure the directory exists
-        shutil.move(file_path, folder_path)
-        logging.info(f"File moved to: {folder_path}")
+        # Ensure the directory exists
+        os.makedirs(folder_path, exist_ok=True)
+
+        # Construct the destination path
+        destination_path = os.path.join(folder_path, os.path.basename(file_path))
+
+        # If the file already exists at the destination, overwrite it
+        if os.path.exists(destination_path):
+            os.replace(file_path, destination_path)
+            logging.info(f"File overwritten at: {destination_path}")
+        else:
+            shutil.move(file_path, destination_path)
+            logging.info(f"File moved to: {destination_path}")
     except Exception as e:
-        logging.error(f"Failed to move file {file_path} to {folder_path}: {e}")
+        logging.error(f"Failed to move or overwrite file {file_path} to {folder_path}: {e}")
