@@ -1,7 +1,6 @@
 import pandas as pd
 import argparse
 import logging
-import json
 import os
 from config.config import INTERFACE_IDS
 from helpers import move_file_to_folder, load_json_mapping
@@ -69,10 +68,6 @@ def write_data_to_csv(data, output_file):
 
 
 if __name__ == "__main__":
-    import argparse
-    import os
-    import logging
-
     # Command-line arguments
     parser = argparse.ArgumentParser(description="Process Excel file(s) based on input flags.")
     parser.add_argument("-file", required=False, help="Path to the input file (Excel).")
