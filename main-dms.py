@@ -4,20 +4,8 @@ import logging
 import json
 import os
 from config.config import INTERFACE_IDS
+from helpers import move_file_to_folder, load_json_mapping
 
-def load_json_mapping(file_path):
-    """Load key-value mapping from a JSON file into a dictionary."""
-    try:
-        with open(file_path, 'r') as file:
-            mapping = json.load(file)
-            logging.info(f"Successfully loaded JSON mapping from {file_path}")
-            return mapping
-    except FileNotFoundError:
-        logging.error(f"Mapping file not found at {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
-        raise
 
 def load_excel_file(file_path):
     """
@@ -80,35 +68,77 @@ def write_data_to_csv(data, output_file):
         raise
 
 
-# Example Usage
 if __name__ == "__main__":
-    # flags for a JSON or XML input file (-file)
-    # and a configuration file with table information, schema, and connection details (-config)
-    parser = argparse.ArgumentParser(description="Process Excel file based on input flags.")
-    parser.add_argument("-file", required=True, help="Path to the input file (Excel).")
-    parser.add_argument("-interface_id", required=True, help="Interface ID")
+    import argparse
+    import os
+    import logging
+
+    # Command-line arguments
+    parser = argparse.ArgumentParser(description="Process Excel file(s) based on input flags.")
+    parser.add_argument("-file", required=False, help="Path to the input file (Excel).")
+    parser.add_argument("-interface_id", required=True, help="Interface ID.")
     args = parser.parse_args()
 
-    if not args.interface_id in INTERFACE_IDS:
-        logging.error(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
-        raise ValueError(f"Interface ID not found in key set: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
+    # Validate interface ID
+    if args.interface_id not in INTERFACE_IDS:
+        logging.error(f"Interface ID '{args.interface_id}' not found in INTERFACE_IDS.")
+        raise ValueError(f"Invalid Interface ID: {args.interface_id}")
 
-    logging.info(f"Interface ID: {args.interface_id}, {INTERFACE_IDS[args.interface_id]}")
-    config = load_json_mapping(INTERFACE_IDS[args.interface_id])
+    # Load the configuration file for the specified interface
+    config_path = INTERFACE_IDS[args.interface_id]
+    try:
+        config = load_json_mapping(config_path)
+    except Exception as e:
+        logging.error(f"Failed to load configuration: {e}")
+        raise
 
-    file_path = str(os.path.join(config["inputDirectory"], args.file))
-    file_type = "xlsx" if file_path.lower().endswith(".xlsx") else "xls" if file_path.lower().endswith(".xls") else None
-    if not file_type:
-        logging.error("Unsupported file type. The input file must have a .xlsx or .xls extension.")
-        raise ValueError("Unsupported file type. The input file must have a .xlsx or .xls extension.")
+    # Get input and output directories
+    input_directory = config["inputDirectory"]
+    output_directory = config["outputDirectory"]
 
-    output_csv = "output-dms.csv"  # Replace with desired CSV output path
+    # Determine files to process
+    if args.file:
+        # Process a single file
+        files_to_process = [os.path.join(input_directory, args.file)]
+    else:
+        # Process all .xlsx and .xls files in the input directory
+        files_to_process = [
+            os.path.join(input_directory, f)
+            for f in os.listdir(input_directory)
+            if f.endswith(".xlsx") or f.endswith(".xls")
+        ]
 
-    # Load Excel file
-    df = load_excel_file(file_path)
+    if not files_to_process:
+        logging.error(f"No .xlsx or .xls files found in {input_directory}.")
+        raise ValueError(f"No files to process in {input_directory}.")
 
-    # Extract headers and data
-    headers, data = get_headers_and_data(df, header_row=3)
+    # Process each file sequentially
+    for file_path in files_to_process:
+        try:
+            logging.info(f"Processing file: {file_path}")
 
-    # Write data to CSV
-    write_data_to_csv(data, os.path.join(config["outputDirectory"], output_csv))
+            # Determine file type
+            file_type = "xlsx" if file_path.lower().endswith(".xlsx") else "xls"
+            if not file_type:
+                logging.error(f"Unsupported file type: {file_path}")
+                continue
+
+            # Load Excel file
+            df = load_excel_file(file_path)
+
+            # Extract headers and data
+            headers, data = get_headers_and_data(df, header_row=3)
+
+            # Define output CSV path
+            output_csv = os.path.join(output_directory, os.path.basename(file_path).replace(f".{file_type}", "-output.csv"))
+
+            # Ensure output directory exists
+            os.makedirs(output_directory, exist_ok=True)
+
+            # Write data to CSV
+            write_data_to_csv(data, output_csv)
+            move_file_to_folder(file_path, output_directory)
+
+            logging.info(f"File successfully processed and saved to: {output_csv}")
+        except Exception as e:
+            logging.error(f"Failed to process file {file_path}: {e}")

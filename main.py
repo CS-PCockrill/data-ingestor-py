@@ -1,6 +1,5 @@
 import json
 import csv
-import shutil
 import argparse
 import os.path
 import xml.etree.ElementTree as ET
@@ -12,6 +11,8 @@ from config.config import INTERFACE_IDS
 from queue import Queue
 from threading import Thread
 
+from helpers import move_file_to_folder, load_json_mapping
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -20,20 +21,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-def load_json_mapping(file_path):
-    """Load key-value mapping from a JSON file into a dictionary."""
-    try:
-        with open(file_path, 'r') as file:
-            mapping = json.load(file)
-            logging.info(f"Successfully loaded JSON mapping from {file_path}")
-            return mapping
-    except FileNotFoundError:
-        logging.error(f"Mapping file not found at {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
-        raise
 
 def flatten_dict(data):
     """Flattens a nested dictionary and integrates repeated elements as individual rows."""
@@ -249,9 +236,10 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
 
 
 if __name__ == "__main__":
+
     # Command-line arguments
     parser = argparse.ArgumentParser(description="Stream and process JSON/XML files.")
-    parser.add_argument("-file", required=True, help="Path to input JSON/XML file.")
+    parser.add_argument("-file", required=False, help="Path to input JSON/XML file.")
     parser.add_argument("-interface_id", required=True, help="Interface ID.")
     args = parser.parse_args()
 
@@ -263,61 +251,79 @@ if __name__ == "__main__":
     # Load the configuration file for the specified interface
     config_path = INTERFACE_IDS[args.interface_id]
     try:
-        with open(config_path, 'r') as config_file:
-            config = json.load(config_file)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logging.error(f"Failed to load configuration file: {e}")
+        config = load_json_mapping(config_path)
+    except Exception as e:
+        logging.error(f"Failed to load configuration: {e}")
         raise
 
-    # Determine file type and tags
-    file_path = str(os.path.join(config["inputDirectory"], args.file))
-    file_type = "json" if file_path.endswith(".json") else "xml" if file_path.endswith(".xml") else None
-    if not file_type:
-        logging.error("Unsupported file type. The input file must have a .json or .xml extension.")
-        raise ValueError("Unsupported file type. The input file must have a .json or .xml extension.")
-
-    schema_tag = config[f"{file_type}TagName"]
-    key_column_mapping = config[f"{file_type}Schema"]
+    # Determine files to process
+    input_directory = config["inputDirectory"]
     output_directory = config["outputDirectory"]
 
-    # Initialize database connection and queue
+    if args.file:
+        # Process a single file
+        files_to_process = [os.path.join(input_directory, args.file)]
+    else:
+        # Process all .json and .xml files in the input directory
+        files_to_process = [
+            os.path.join(input_directory, f)
+            for f in os.listdir(input_directory)
+            if f.endswith(".json") or f.endswith(".xml")
+        ]
+
+    if not files_to_process:
+        logging.error(f"No .json or .xml files found in {input_directory}.")
+        raise ValueError(f"No files to process in {input_directory}.")
+
+    # Initialize database connection
     conn = connect_to_postgres(config)
-    record_queue = Queue(maxsize=5*2)
 
-    def producer():
-        """Producer thread to parse file and add records to the queue."""
-        logging.info("Starting producer...")
-        for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
-            record_queue.put(record)  # Add records to the queue
-        record_queue.put(None)  # Signal end of records
-        logging.info("Producer finished processing the file.")
+    def process_file_thread(file_path):
+        """Threaded function to process a single file."""
+        file_type = "json" if file_path.endswith(".json") else "xml"
+        schema_tag = config.get(f"{file_type}TagName", "Records")
+        key_column_mapping = config.get(f"{file_type}Schema")
 
-    def consumer():
-        """Consumer thread to transform and insert records into the database."""
-        logging.info("Starting consumer...")
-        consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
+        record_queue = Queue(maxsize=10)
 
-    # Start producer and consumer threads
-    producer_thread = Thread(target=producer)
-    consumer_thread = Thread(target=consumer)
+        def producer():
+            """Producer thread to parse file and add records to the queue."""
+            logging.info(f"Starting producer for {file_path}...")
+            for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
+                record_queue.put(record)
+            record_queue.put(None)  # Signal end of records
+            logging.info(f"Producer finished processing {file_path}.")
 
-    logging.info(f"Starting processing for interface ID: {args.interface_id}")
-    producer_thread.start()
-    consumer_thread.start()
+        def consumer():
+            """Consumer thread to transform and insert records into the database."""
+            logging.info(f"Starting consumer for {file_path}...")
+            consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
 
-    producer_thread.join()
-    record_queue.join()  # Ensure all tasks are processed
-    consumer_thread.join()
+        # Start producer and consumer threads
+        producer_thread = Thread(target=producer)
+        consumer_thread = Thread(target=consumer)
 
-    # Move the processed file to the output directory
-    try:
-        os.makedirs(output_directory, exist_ok=True)  # Ensure the directory exists
-        destination_path = os.path.join(output_directory, os.path.basename(file_path))
-        shutil.move(file_path, destination_path)
-        logging.info(f"Input file moved to: {destination_path}")
-    except Exception as e:
-        logging.error(f"Failed to move input file to {output_directory}: {e}")
+        producer_thread.start()
+        consumer_thread.start()
 
-    # Clean up
+        producer_thread.join()
+        record_queue.join()
+        consumer_thread.join()
+
+        # Move the processed file to the output directory
+        move_file_to_folder(file_path, output_directory)
+
+    # Start a thread for each file
+    threads = []
+    for file_path in files_to_process:
+        thread = Thread(target=process_file_thread, args=(file_path,))
+        threads.append(thread)
+        thread.start()
+
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+
+    # Close the database connection
     conn.close()
-    logging.info("Processing completed successfully.")
+    logging.info("All files processed successfully.")
