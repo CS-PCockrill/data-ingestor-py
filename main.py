@@ -10,6 +10,7 @@ import logging
 from config.config import INTERFACE_IDS
 from queue import Queue
 from threading import Thread
+import pandas as pd
 
 from helpers import move_file_to_folder, load_json_mapping
 
@@ -47,8 +48,18 @@ def flatten_dict(data):
 
     return nested_records
 
+
 def parse_json_file(file_path, schema_tag="Records"):
-    """Parses and flattens JSON records from a file."""
+    """
+    Parses and flattens JSON records from a file using Pandas.
+
+    Args:
+        file_path (str): Path to the JSON file.
+        schema_tag (str): Key to extract records from the JSON file (default: "Records").
+
+    Returns:
+        pd.DataFrame: Flattened data as a Pandas DataFrame.
+    """
     try:
         with open(file_path, "r") as file:
             data = json.load(file)
@@ -60,14 +71,42 @@ def parse_json_file(file_path, schema_tag="Records"):
         logging.error(f"Error parsing JSON file: {e}")
         raise
 
+    # Extract records
     records = data.get(schema_tag, data)
+
+    # Flatten the records into a DataFrame
     if isinstance(records, list):
-        for record in records:
-            for flattened in flatten_dict(record):
-                yield flattened
+        df = pd.json_normalize(records)
     elif isinstance(records, dict):
-        for flattened in flatten_dict(records):
-            yield flattened
+        df = pd.json_normalize([records])  # Wrap in a list to handle a single record
+    else:
+        logging.error(f"Unexpected data format: {type(records)}")
+        raise ValueError("The JSON structure is not compatible with Pandas processing.")
+
+    return df
+
+
+# def parse_json_file(file_path, schema_tag="Records"):
+#     """Parses and flattens JSON records from a file."""
+#     try:
+#         with open(file_path, "r") as file:
+#             data = json.load(file)
+#             logging.info(f"Successfully loaded JSON file: {file_path}")
+#     except FileNotFoundError:
+#         logging.error(f"JSON file not found: {file_path}")
+#         raise
+#     except json.JSONDecodeError as e:
+#         logging.error(f"Error parsing JSON file: {e}")
+#         raise
+#
+#     records = data.get(schema_tag, data)
+#     if isinstance(records, list):
+#         for record in records:
+#             for flattened in flatten_dict(record):
+#                 yield flattened
+#     elif isinstance(records, dict):
+#         for flattened in flatten_dict(records):
+#             yield flattened
 
 def parse_xml_file(file_path, schema_tag="Record"):
     """Parses and flattens XML records from a file."""
