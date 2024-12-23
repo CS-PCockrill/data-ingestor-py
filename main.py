@@ -181,30 +181,33 @@ def transform_and_validate_records(records, key_column_mapping):
 
 
 def write_records_to_csv(records, output_file_path):
-    """Write transformed records to a CSV file."""
+    """
+    Write transformed records to a CSV file using Pandas.
+
+    Args:
+        records (list[dict]): List of dictionaries containing the data to write.
+        output_file_path (str): Path to the output CSV file.
+    """
     if not records:
         # Log a warning if no records are available
         logging.warning("No records to write to CSV.")
         return
 
-    # Extract headers from the first record
-    headers = list(records[0].keys())
-
     try:
         # Ensure the output directory exists
         os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
 
-        # Write records to a CSV file
-        with open(output_file_path, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.DictWriter(file, fieldnames=headers)
-            writer.writeheader()
-            for record in records:
-                writer.writerow(record)
+        # Convert records to a Pandas DataFrame
+        df = pd.DataFrame(records)
+
+        # Write DataFrame to a CSV file
+        df.to_csv(output_file_path, index=False, sep='|', encoding='utf-8')
         logging.info(f"CSV file successfully written to: {output_file_path}")
     except Exception as e:
         # Handle errors during file writing
         logging.error(f"Failed to write CSV file: {e}")
         raise
+
 
 
 def connect_to_postgres(config):
@@ -326,7 +329,6 @@ if __name__ == "__main__":
 
     # Establish a connection to the PostgreSQL database
     conn = connect_to_postgres(config)
-
 
     def process_file_thread(file_path):
         """Threaded function to process a single file."""

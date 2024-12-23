@@ -53,18 +53,20 @@ def get_headers_and_data(df, header_row=3):
 
 def write_data_to_csv(data, output_file):
     """
-    Write a DataFrame to a CSV file.
+    Write a DataFrame to a CSV file with a '|' delimiter.
 
     Args:
         data (pd.DataFrame): DataFrame containing the data to write.
         output_file (str): Path to the output CSV file.
     """
     try:
-        data.to_csv(output_file, index=False)
-        print(f"Data successfully written to CSV file: {output_file}")
+        # Write the DataFrame to a CSV file using '|' as the delimiter
+        data.to_csv(output_file, index=False, sep='|')
+        print(f"Data successfully written to CSV file with '|' delimiter: {output_file}")
     except Exception as e:
         print(f"Error writing data to CSV: {e}")
         raise
+
 
 
 if __name__ == "__main__":
