@@ -1,5 +1,4 @@
 import json
-import csv
 import argparse
 import os.path
 import xml.etree.ElementTree as ET
@@ -13,6 +12,7 @@ from threading import Thread
 import pandas as pd
 
 from helpers import move_file_to_folder, load_json_mapping
+from logging.sqllogger import SQLLogger
 
 # Configure logging
 logging.basicConfig(
@@ -326,6 +326,14 @@ if __name__ == "__main__":
     if not files_to_process:
         logging.error(f"No .json or .xml files found in {input_directory}.")
         raise ValueError(f"No files to process in {input_directory}.")
+
+    # Switch between PostgreSQL and Oracle by changing the config
+    logger = SQLLogger(config)  # Or db_config_oracle
+
+    logger.info("Application started.")
+    start_time = logger.start_process("Ingesting data")
+    logger.end_process("Data ingestion complete", start_time, success=True)
+    logger.close()
 
     # Establish a connection to the PostgreSQL database
     conn = connect_to_postgres(config)

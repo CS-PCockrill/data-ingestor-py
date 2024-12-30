@@ -1,4 +1,5 @@
 {
+  "type": "postgresql",
   "tableName": "SFLW_RECS",
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",

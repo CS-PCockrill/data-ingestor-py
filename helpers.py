@@ -19,7 +19,6 @@ def load_json_mapping(file_path):
 
 def move_file_to_folder(file_path, folder_path):
     import shutil
-    import os
 
     try:
         # Ensure the directory exists
