@@ -12,9 +12,9 @@ from threading import Thread
 import pandas as pd
 
 from helpers import move_file_to_folder, load_json_mapping
-from logging.sqllogger import SQLLogger
+from logger.sqllogger import SQLLogger
 
-# Configure logging
+# Configure logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -64,14 +64,14 @@ def parse_json_file(file_path, schema_tag="Records"):
         # Open and load the JSON file
         with open(file_path, "r") as file:
             data = json.load(file)
-            logging.info(f"Successfully loaded JSON file: {file_path}")
+            logger.info(f"Successfully loaded JSON file: {file_path}")
     except FileNotFoundError:
         # Handle case where the file does not exist
-        logging.error(f"JSON file not found: {file_path}")
+        logger.error(f"JSON file not found: {file_path}")
         raise
     except json.JSONDecodeError as e:
         # Handle invalid JSON syntax
-        logging.error(f"Error parsing JSON file: {e}")
+        logger.error(f"Error parsing JSON file: {e}")
         raise
 
     # Extract records using the schema tag
@@ -93,14 +93,14 @@ def parse_xml_file(file_path, schema_tag="Record"):
         # Parse the XML file
         tree = ET.parse(file_path)
         root = tree.getroot()
-        logging.info(f"Successfully parsed XML file: {file_path}")
+        logger.info(f"Successfully parsed XML file: {file_path}")
     except FileNotFoundError:
         # Handle case where the file does not exist
-        logging.error(f"XML file not found: {file_path}")
+        logger.error(f"XML file not found: {file_path}")
         raise
     except ET.ParseError as e:
         # Handle invalid XML syntax
-        logging.error(f"Error parsing XML file: {e}")
+        logger.error(f"Error parsing XML file: {e}")
         raise
 
     def parse_element(element):
@@ -142,16 +142,16 @@ def process_file(file_path, schema_tag, file_type="json", output_queue=None):
     for record in parser(file_path, schema_tag=schema_tag):
         if output_queue:
             # Put records into the queue for parallel processing
-            logging.debug(f"Adding record to queue: {record}")
+            logger.debug(f"Adding record to queue: {record}")
             output_queue.put(record)
         else:
             # Yield records sequentially for single-threaded processing
-            logging.debug(f"Yielding record: {record}")
+            logger.debug(f"Yielding record: {record}")
             yield record
 
     # Signal the consumer that processing is complete
     if output_queue:
-        logging.debug("Signaling consumer that processing is complete.")
+        logger.debug("Signaling consumer that processing is complete.")
         output_queue.put(None)
 
 
@@ -171,12 +171,12 @@ def transform_and_validate_records(records, key_column_mapping):
 
         if missing_keys:
             # Log a warning for missing keys
-            logging.warning(f"Record missing keys: {missing_keys}")
+            logger.warning(f"Record missing keys: {missing_keys}")
 
         transformed_records.append(transformed_record)
 
     # Log the total number of transformed records
-    logging.info(f"Transformed {len(transformed_records)} records.")
+    logger.info(f"Transformed {len(transformed_records)} records.")
     return transformed_records
 
 
@@ -190,7 +190,7 @@ def write_records_to_csv(records, output_file_path):
     """
     if not records:
         # Log a warning if no records are available
-        logging.warning("No records to write to CSV.")
+        logger.warning("No records to write to CSV.")
         return
 
     try:
@@ -202,10 +202,10 @@ def write_records_to_csv(records, output_file_path):
 
         # Write DataFrame to a CSV file
         df.to_csv(output_file_path, index=False, sep='|', encoding='utf-8')
-        logging.info(f"CSV file successfully written to: {output_file_path}")
+        logger.info(f"CSV file successfully written to: {output_file_path}")
     except Exception as e:
         # Handle errors during file writing
-        logging.error(f"Failed to write CSV file: {e}")
+        logger.error(f"Failed to write CSV file: {e}")
         raise
 
 
@@ -221,18 +221,18 @@ def connect_to_postgres(config):
             user=config["user"],
             password=config["password"]
         )
-        logging.info("Successfully connected to PostgreSQL.")
+        logger.info("Successfully connected to PostgreSQL.")
         return conn  # Return the active connection object
     except Exception as e:
         # Log the error if connection fails
-        logging.error(f"Failed to connect to PostgreSQL: {e}")
+        logger.error(f"Failed to connect to PostgreSQL: {e}")
         raise
 
 def batch_insert_records(conn, table_name, records):
     """Perform a batch insert of multiple records into the database."""
     if not records:
         # Log a warning if there are no records to insert
-        logging.warning("No records to insert.")
+        logger.warning("No records to insert.")
         return
 
     try:
@@ -245,15 +245,15 @@ def batch_insert_records(conn, table_name, records):
             )
             # Prepare values to be inserted
             values = [[record[col] for col in columns] for record in records]
-            logging.info(f"Executing query for table {table_name} with {len(records)} records.")
+            logger.info(f"Executing query for table {table_name} with {len(records)} records.")
 
             # Execute the batch insert using execute_values for efficiency
             execute_values(cur, query, values)
             conn.commit()  # Commit the transaction
-            logging.info(f"Successfully inserted {len(records)} records into {table_name}.")
+            logger.info(f"Successfully inserted {len(records)} records into {table_name}.")
     except Exception as e:
         # Log and rollback the transaction if the insert fails
-        logging.error(f"Failed to insert records: {e}")
+        logger.error(f"Failed to insert records: {e}")
         conn.rollback()
         raise
 
@@ -267,7 +267,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
             queue.task_done()
             break  # Exit the loop when the producer signals completion
 
-        logging.info(f"Received record: {record}")
+        logger.info(f"Received record: {record}")
         # Transform the record based on the key-column mapping
         transformed_record = {}
         for json_key, db_column in key_column_mapping.items():
@@ -285,7 +285,7 @@ def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
     # Insert any remaining records in the batch after the loop ends
     if batch:
         batch_insert_records(conn, table_name, batch)
-    logging.info("Consumer finished processing records.")
+    logger.info("Consumer finished processing records.")
 
 
 if __name__ == "__main__":
@@ -349,15 +349,15 @@ if __name__ == "__main__":
 
         def producer():
             """Producer thread to parse file and add records to the queue."""
-            logging.info(f"Starting producer for {file_path}...")
+            logger.info(f"Starting producer for {file_path}...")
             for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
                 record_queue.put(record)  # Add records to the queue
             record_queue.put(None)  # Signal end of records
-            logging.info(f"Producer finished processing {file_path}.")
+            logger.info(f"Producer finished processing {file_path}.")
 
         def consumer():
             """Consumer thread to transform and insert records into the database."""
-            logging.info(f"Starting consumer for {file_path}...")
+            logger.info(f"Starting consumer for {file_path}...")
             consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
 
         # Start the producer and consumer threads
@@ -388,4 +388,4 @@ if __name__ == "__main__":
 
     # Close the database connection after processing all files
     conn.close()
-    logging.info("All files processed successfully.")
+    logger.info("All files processed successfully.")

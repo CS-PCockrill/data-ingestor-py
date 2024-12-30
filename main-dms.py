@@ -1,6 +1,6 @@
 import pandas as pd
 import argparse
-import logging
+import logger
 import os
 from config.config import INTERFACE_IDS
 from helpers import move_file_to_folder, load_json_mapping
@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     # Validate interface ID
     if args.interface_id not in INTERFACE_IDS:
-        logging.error(f"Interface ID '{args.interface_id}' not found in INTERFACE_IDS.")
+        logger.error(f"Interface ID '{args.interface_id}' not found in INTERFACE_IDS.")
         raise ValueError(f"Invalid Interface ID: {args.interface_id}")
 
     # Load the configuration file for the specified interface
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     try:
         config = load_json_mapping(config_path)
     except Exception as e:
-        logging.error(f"Failed to load configuration: {e}")
+        logger.error(f"Failed to load configuration: {e}")
         raise
 
     # Get input and output directories
@@ -106,18 +106,18 @@ if __name__ == "__main__":
         ]
 
     if not files_to_process:
-        logging.error(f"No .xlsx or .xls files found in {input_directory}.")
+        logger.error(f"No .xlsx or .xls files found in {input_directory}.")
         raise ValueError(f"No files to process in {input_directory}.")
 
     # Process each file sequentially
     for file_path in files_to_process:
         try:
-            logging.info(f"Processing file: {file_path}")
+            logger.info(f"Processing file: {file_path}")
 
             # Determine file type
             file_type = "xlsx" if file_path.lower().endswith(".xlsx") else "xls"
             if not file_type:
-                logging.error(f"Unsupported file type: {file_path}")
+                logger.error(f"Unsupported file type: {file_path}")
                 continue
 
             # Load Excel file
@@ -136,6 +136,6 @@ if __name__ == "__main__":
             write_data_to_csv(data, output_csv)
             move_file_to_folder(file_path, output_directory)
 
-            logging.info(f"File successfully processed and saved to: {output_csv}")
+            logger.info(f"File successfully processed and saved to: {output_csv}")
         except Exception as e:
-            logging.error(f"Failed to process file {file_path}: {e}")
+            logger.error(f"Failed to process file {file_path}: {e}")

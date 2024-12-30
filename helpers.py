@@ -1,4 +1,4 @@
-import logging
+import logger
 import os
 import json
 
@@ -7,13 +7,13 @@ def load_json_mapping(file_path):
     try:
         with open(file_path, 'r') as file:
             mapping = json.load(file)
-            logging.info(f"Successfully loaded JSON mapping from {file_path}")
+            logger.info(f"Successfully loaded JSON mapping from {file_path}")
             return mapping
     except FileNotFoundError:
-        logging.error(f"Mapping file not found at {file_path}")
+        logger.error(f"Mapping file not found at {file_path}")
         raise
     except json.JSONDecodeError as e:
-        logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
+        logger.error(f"Error parsing JSON mapping file at {file_path}: {e}")
         raise
 
 
@@ -30,9 +30,9 @@ def move_file_to_folder(file_path, folder_path):
         # If the file already exists at the destination, overwrite it
         if os.path.exists(destination_path):
             os.replace(file_path, destination_path)
-            logging.info(f"File overwritten at: {destination_path}")
+            logger.info(f"File overwritten at: {destination_path}")
         else:
             shutil.move(file_path, destination_path)
-            logging.info(f"File moved to: {destination_path}")
+            logger.info(f"File moved to: {destination_path}")
     except Exception as e:
-        logging.error(f"Failed to move or overwrite file {file_path} to {folder_path}: {e}")
+        logger.error(f"Failed to move or overwrite file {file_path} to {folder_path}: {e}")
