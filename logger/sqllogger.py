@@ -109,7 +109,7 @@ class SQLLogger:
             start_time (str): Start time of the process (optional).
             end_time (str): End time of the process (optional).
         """
-        timestamp = datetime.utcnow()
+        timestamp = str(datetime.datetime.now(datetime.timezone.utc))
         insert_query = """
         INSERT INTO logs (timestamp, log_level, message, metadata, status, start_time, end_time)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
