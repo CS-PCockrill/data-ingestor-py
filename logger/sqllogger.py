@@ -1,4 +1,4 @@
-import logger
+import logging
 import datetime
 
 import cx_Oracle
@@ -33,7 +33,7 @@ class SQLLogger:
 
         self._connect()
         self._setup_table()
-        logger.info(f"SQL Logger initialized with {self.db_type} database.")
+        logging.info(f"SQL Logger initialized with {self.db_type} database.")
 
     def _connect(self):
         """Establish a database connection based on the type."""
@@ -54,7 +54,7 @@ class SQLLogger:
                 )
             self.cursor = self.conn.cursor()
         except Exception as e:
-            logger.error(f"Failed to connect to {self.db_type} database: {e}")
+            logging.error(f"Failed to connect to {self.db_type} database: {e}")
             raise
 
     def _setup_table(self):
@@ -92,9 +92,9 @@ class SQLLogger:
         try:
             self.cursor.execute(create_table_query)
             self.conn.commit()
-            logger.info(f"Logs table verified or created for {self.db_type}.")
+            logging.info(f"Logs table verified or created for {self.db_type}.")
         except Exception as e:
-            logger.error(f"Failed to create logs table: {e}")
+            logging.error(f"Failed to create logs table: {e}")
             raise
 
     def _log(self, log_level, message, metadata=None, status=None, start_time=None, end_time=None):
@@ -125,9 +125,9 @@ class SQLLogger:
                 params = (timestamp, log_level, message, metadata, status, start_time, end_time)
             self.cursor.execute(insert_query, params)
             self.conn.commit()
-            logger.debug(f"Log inserted into {self.db_type}: {log_level} - {message}")
+            logging.debug(f"Log inserted into {self.db_type}: {log_level} - {message}")
         except Exception as e:
-            logger.error(f"Failed to insert log: {e}")
+            logging.error(f"Failed to insert log: {e}")
             raise
 
     def info(self, message, metadata=None):
@@ -176,4 +176,4 @@ class SQLLogger:
             self.cursor.close()
         if self.conn:
             self.conn.close()
-        logger.info(f"SQL Logger connection to {self.db_type} closed.")
+        logging.info(f"SQL Logger connection to {self.db_type} closed.")
