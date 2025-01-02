@@ -328,11 +328,18 @@ if __name__ == "__main__":
         raise ValueError(f"No files to process in {input_directory}.")
 
     # Switch between PostgreSQL and Oracle by changing the config
-    logger = SQLLogger(config)  # Or db_config_oracle
+    logger = SQLLogger(config)
 
-    logger.info("Application started.")
-    start_time = logger.start_process("Ingesting data")
-    logger.end_process("Data ingestion complete", start_time, success=True)
+    # Start a job
+    job_id = logger.log_job_start("Data Ingestion", metadata={"source": "input.json"})
+
+    try:
+        # Simulate job processing
+        success = True
+        logger.log_job_end(job_id, success=success, message="Ingestion completed successfully.")
+    except Exception as e:
+        logger.log_job_end(job_id, success=False, message=str(e))
+
     logger.close()
 
     # Establish a connection to the PostgreSQL database
@@ -349,15 +356,15 @@ if __name__ == "__main__":
 
         def producer():
             """Producer thread to parse file and add records to the queue."""
-            logger.info(f"Starting producer for {file_path}...")
+            logging.info(f"Starting producer for {file_path}...")
             for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
                 record_queue.put(record)  # Add records to the queue
             record_queue.put(None)  # Signal end of records
-            logger.info(f"Producer finished processing {file_path}.")
+            logging.info(f"Producer finished processing {file_path}.")
 
         def consumer():
             """Consumer thread to transform and insert records into the database."""
-            logger.info(f"Starting consumer for {file_path}...")
+            logging.info(f"Starting consumer for {file_path}...")
             consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
 
         # Start the producer and consumer threads
@@ -388,4 +395,4 @@ if __name__ == "__main__":
 
     # Close the database connection after processing all files
     conn.close()
-    logger.info("All files processed successfully.")
+    logging.info("All files processed successfully.")
