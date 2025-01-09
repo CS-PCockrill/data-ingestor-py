@@ -3,6 +3,8 @@
   "tableName": "SFLW_RECS",
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",
+  "errorDefinitionSourceType": "file",
+  "errorDefinitionSourceLocation": "interfaces/error-definitions.json",
   "host": "localhost",
   "port": 5432,
   "database": "testdb",

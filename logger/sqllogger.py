@@ -1,5 +1,6 @@
 import logging
 import datetime
+import json
 import psycopg2
 import cx_Oracle
 
@@ -8,30 +9,31 @@ class SQLLogger:
     """
     A custom SQL logger that logs job states to a SQL database.
     Tracks the lifecycle of a job (IN PROGRESS -> SUCCESS/FAILURE).
+    Supports structured error codes and statuses.
     """
 
-    def __init__(self, db_config):
+    def __init__(self, db_config, error_definition_source):
         """
-        Initialize the logger with database configuration.
+        Initialize the logger with database configuration and error definitions.
+
         Args:
-            db_config (dict): Database configuration with keys:
-                              - "type" ("oracle" or "postgresql")
-                              - "host"
-                              - "port"
-                              - "database"
-                              - "user"
-                              - "password"
+            db_config (dict): Database configuration.
+            error_definition_source (str): Path to JSON file or indication for DB source.
         """
         self.db_config = db_config
         self.db_type = db_config.get("type").lower()
+        self.error_source_type = db_config.get("error_definition_source_type")
+        self.error_source_location = db_config.get("error_definition_source_location")
         self.conn = None
         self.cursor = None
+        self.error_definitions = {}
 
         if self.db_type not in ["oracle", "postgresql"]:
             raise ValueError("Unsupported database type. Use 'oracle' or 'postgresql'.")
 
         self._connect()
         self._setup_table()
+        self._load_error_definitions()
 
     def _connect(self):
         """Connect to the database."""
@@ -92,35 +94,53 @@ class SQLLogger:
             logging.error(f"Failed to create job_logs table: {e}")
             raise
 
-    def log_job_start(self, job_name, metadata=None):
+    def _load_error_definitions(self, source):
+        """Load error definitions from a JSON file or database."""
+        try:
+            if self.error_source_type == "file":
+                with open(self.error_source_location, "r") as file:
+                    self.error_definitions = json.load(file)
+            elif self.error_source_type == "db":
+                query = f"SELECT error_code, status, message FROM {self.error_source_location}"
+                self.cursor.execute(query)
+                self.error_definitions = {
+                    row[0]: {"status": row[1], "message": row[2]}
+                    for row in self.cursor.fetchall()
+                }
+            else:
+                raise ValueError("Unsupported error source type. Use 'file' or 'db'.")
+            logging.info("Error definitions loaded successfully.")
+        except Exception as e:
+            logging.error(f"Failed to load error definitions: {e}")
+            raise
+
+    def log_job_start(self, job_name, metadata=None, error_code="I0001"):
         """
         Log the start of a job.
 
         Args:
             job_name (str): Name of the job.
-            metadata (dict): Additional information about the job.
-
-        Returns:
-            int: The ID of the inserted log record.
+            metadata (dict): Additional metadata about the job.
+            error_code (str): Error code for logging (default is informational).
         """
         start_time = datetime.datetime.now(datetime.UTC)
-        insert_query = """
-        INSERT INTO ss_logs (job_name, status, start_time, metadata)
-        VALUES (%s, %s, %s, %s) RETURNING id
-        """
-        if self.db_type == "oracle":
-            insert_query = """
-            INSERT INTO ss_logs (job_name, status, start_time, metadata)
-            VALUES (:1, :2, :3, :4) RETURNING id INTO :5
-            """
-        metadata_str = str(metadata) if metadata else None
+        error = self.error_definitions.get(error_code, {})
+        status = error.get("status", "I")
+        message = error.get("message", "Job started.")
+
+        metadata_str = json.dumps(metadata) if metadata else None
         try:
+            insert_query = """
+            INSERT INTO ss_logs (job_name, status, start_time, message, metadata)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id
+            """
             if self.db_type == "oracle":
-                self.cursor.execute(insert_query, (job_name, "IN PROGRESS", start_time, metadata_str))
-                job_id = self.cursor.fetchone()[0]
-            else:
-                self.cursor.execute(insert_query, (job_name, "IN PROGRESS", start_time, metadata_str))
-                job_id = self.cursor.fetchone()[0]
+                insert_query = """
+                INSERT INTO ss_logs (job_name, status, start_time, message, metadata)
+                VALUES (:1, :2, :3, :4, :5) RETURNING id INTO :6
+                """
+            self.cursor.execute(insert_query, (job_name, status, start_time, message, metadata_str))
+            job_id = self.cursor.fetchone()[0]
             self.conn.commit()
             logging.info(f"Job '{job_name}' started with ID {job_id}.")
             return job_id
@@ -128,7 +148,7 @@ class SQLLogger:
             logging.error(f"Failed to log job start: {e}")
             raise
 
-    def log_job_end(self, job_id, success=True, message=None):
+    def log_job_end(self, job_id, success=True, message=None, error_code=None):
         """
         Log the end of a job.
 
@@ -136,21 +156,28 @@ class SQLLogger:
             job_id (int): ID of the job log record.
             success (bool): Whether the job succeeded.
             message (str): Additional details about the job outcome.
+            error_code (str): Error code for logging.
         """
         end_time = datetime.datetime.now(datetime.UTC)
         status = "SUCCESS" if success else "FAILURE"
-        update_query = """
-        UPDATE SS_LOGS
-        SET status = %s, end_time = %s, message = %s
-        WHERE id = %s
-        """
-        if self.db_type == "oracle":
-            update_query = """
-            UPDATE SS_LOGS
-            SET status = :1, end_time = :2, message = :3
-            WHERE id = :4
-            """
+        if error_code:
+            error = self.error_definitions.get(error_code, {})
+            status = error.get("status", status)
+            default_message = error.get("message", "")
+            message = f"{default_message} {message}" if message else default_message
+
         try:
+            update_query = """
+            UPDATE ss_logs
+            SET status = %s, end_time = %s, message = %s
+            WHERE id = %s
+            """
+            if self.db_type == "oracle":
+                update_query = """
+                UPDATE ss_logs
+                SET status = :1, end_time = :2, message = :3
+                WHERE id = :4
+                """
             self.cursor.execute(update_query, (status, end_time, message, job_id))
             self.conn.commit()
             logging.info(f"Job with ID {job_id} marked as {status}.")
