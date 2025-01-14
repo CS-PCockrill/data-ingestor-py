@@ -242,7 +242,8 @@ def batch_insert_records(logger, conn, table_name, records, config):
         logger.log_job(symbol="GS2001W", success=False)
         return
 
-    timestamp_columns = config.get("timestampColumns", [])
+    # Log the execution of the query
+    job_id = logger.log_job(symbol="GS1002I", user_id=config['user'])
 
     try:
         with conn.cursor() as cur:
@@ -254,19 +255,15 @@ def batch_insert_records(logger, conn, table_name, records, config):
             )
             values = [[record[col] for col in columns] for record in records]
 
-            # Log the execution of the query
-            job_id = logger.log_job("Testing job id 1", "Testing job id 2", symbol="GS1001I", query=query, success=True)
-
             # Execute batch insert
             execute_values(cur, query, values)
             conn.commit()
 
             # Log successful insertion
-            logger.log_job("Testing 1", "Testing 3", symbol="GS1001I", job_id=job_id, query=query, success=True)
+            logger.log_job(query, values, symbol="GS1002I", job_id=job_id, query=query, success=True)
     except Exception as e:
         # Log the error and rollback
-        logger.log_job("Error 1", "Error 2", symbol="GS2002E", query=query, metadata={"exception": str(e)},
-                       success=False)
+        logger.log_job(str(e), symbol="GS2002E", job_id=job_id, query=query, success=False)
         conn.rollback()
         raise
 
@@ -290,22 +287,18 @@ def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_ma
             queue.task_done()
             break
 
-        # Log receipt of the record
-        # job_id = logger.log_job(
-        #     error_symbol="GS2005I",  # Informational code
-        #     success=True,
-        # )
-
         # Transform the record based on the key-column mapping
         transformed_record = {
             db_column: record.get(json_key)
             for json_key, db_column in key_column_mapping.items()
         }
+        transformed_record['processed'] = False  # Add the processed flag during transformation
+
         batch.append(transformed_record)
         queue.task_done()
 
         # Perform batch insert if batch size reaches threshold
-        if len(batch) >= 5:
+        if len(batch) >= config['sqlBatchSize']:
             batch_insert_records(logger, conn, table_name, batch, config)
             batch.clear()
 
@@ -353,7 +346,7 @@ if __name__ == "__main__":
         logging.error(f"No .json or .xml files found in {input_directory}.")
         raise ValueError(f"No files to process in {input_directory}.")
 
-    logger = SQLLogger(config, error_table="error_definitions")
+    logger = SQLLogger(config, error_table=config["errorDefinitionSourceLocation"])
     conn = connect_to_postgres(config)
 
     for file_path in files_to_process:
@@ -361,10 +354,7 @@ if __name__ == "__main__":
         schema_tag = config.get(f"{file_type}TagName", "Records")
         key_column_mapping = config.get(f"{file_type}Schema")
 
-        # job_id = logger.log_job(
-        #     error_symbol="GS1001I",
-        #     success=True
-        # )
+        job_id = logger.log_job(file_path, config["tableName"], symbol="GS1001I", user_id=config["user"])
 
         record_queue = Queue(maxsize=100)
 
@@ -387,6 +377,8 @@ if __name__ == "__main__":
         consumer.join()
 
         move_file_to_folder(file_path, output_directory)
+        logger.log_job(file_path, config["tableName"], job_id=job_id, symbol="GS1001I", user_id=config["user"], success=True)
+
 
     conn.close()
     logger.close()

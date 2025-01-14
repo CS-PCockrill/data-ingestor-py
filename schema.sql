@@ -15,7 +15,8 @@ CREATE TABLE sflw_recs (
     "local_id" VARCHAR(255),            -- Local identifier for the entry
     "filename" VARCHAR(255),            -- Name of the file associated with the entry
     "fnumber" VARCHAR(100),             -- File number or unique identifier
-    "scan_time" VARCHAR(255)            -- String representing the scan time
+    "scan_time" VARCHAR(255),            -- String representing the scan time
+    "processed" BOOLEAN DEFAULT FALSE   -- Processed represents if it's been processed out of the staging table yet
 );
 
 -- Create the ss_logs table
@@ -56,7 +57,9 @@ CREATE TABLE error_definitions (
 
 -- Insert initial error definitions
 INSERT INTO error_definitions (symb, svrt, dscr, cat, dflt_svrt) VALUES
-('GS1001I', 'I', 'Informational message for process start', 'General', 'I'),
+('GS1001I', 'I', 'Processing input file path {0} to table {1}', 'General', 'I'),
+('GS1002I', 'I', 'Processing batch record with query {0} and values {1}', 'General', 'I'),
+
 ('GS2001W', 'W', 'Warning: No records to insert', 'Data', 'W'),
-('GS2002E', 'E', 'Error: Batch insert failed due to %1', 'Database', 'E'),
+('GS2002E', 'E', 'Error: Batch insert failed due to {0}', 'Database', 'E'),
 ('GS3001S', 'S', 'Severe: System encountered an unexpected failure', 'System', 'S');

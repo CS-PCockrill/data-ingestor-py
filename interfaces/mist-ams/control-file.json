@@ -12,6 +12,7 @@
   "password": "password",
   "jsonTagName": "Records",
   "xmlTagName": "Record",
+  "sqlBatchSize": 5,
   "jsonSchema": {
     "user": "USER",
     "dt_created": "DT_CREATED",

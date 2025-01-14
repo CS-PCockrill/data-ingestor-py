@@ -4,8 +4,6 @@ import psycopg2
 import cx_Oracle
 import json
 import socket
-import uuid
-
 
 class SQLLogger:
     def __init__(self, db_config, error_table):
