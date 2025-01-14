@@ -243,7 +243,7 @@ def batch_insert_records(logger, conn, table_name, records, config):
         return
 
     # Log the execution of the query
-    job_id = logger.log_job(symbol="GS1002I", user_id=config['user'])
+    job_id = logger.log_job("", "", symbol="GS1002I", user_id=config['user'])
 
     try:
         with conn.cursor() as cur:
