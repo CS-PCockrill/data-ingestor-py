@@ -64,14 +64,14 @@ def parse_json_file(file_path, schema_tag="Records"):
         # Open and load the JSON file
         with open(file_path, "r") as file:
             data = json.load(file)
-            logger.info(f"Successfully loaded JSON file: {file_path}")
+            logging.info(f"Successfully loaded JSON file: {file_path}")
     except FileNotFoundError:
         # Handle case where the file does not exist
-        logger.error(f"JSON file not found: {file_path}")
+        logging.error(f"JSON file not found: {file_path}")
         raise
     except json.JSONDecodeError as e:
         # Handle invalid JSON syntax
-        logger.error(f"Error parsing JSON file: {e}")
+        logging.error(f"Error parsing JSON file: {e}")
         raise
 
     # Extract records using the schema tag
@@ -93,14 +93,14 @@ def parse_xml_file(file_path, schema_tag="Record"):
         # Parse the XML file
         tree = ET.parse(file_path)
         root = tree.getroot()
-        logger.info(f"Successfully parsed XML file: {file_path}")
+        logging.info(f"Successfully parsed XML file: {file_path}")
     except FileNotFoundError:
         # Handle case where the file does not exist
-        logger.error(f"XML file not found: {file_path}")
+        logging.error(f"XML file not found: {file_path}")
         raise
     except ET.ParseError as e:
         # Handle invalid XML syntax
-        logger.error(f"Error parsing XML file: {e}")
+        logging.error(f"Error parsing XML file: {e}")
         raise
 
     def parse_element(element):
@@ -142,16 +142,16 @@ def process_file(file_path, schema_tag, file_type="json", output_queue=None):
     for record in parser(file_path, schema_tag=schema_tag):
         if output_queue:
             # Put records into the queue for parallel processing
-            logger.debug(f"Adding record to queue: {record}")
+            logging.debug(f"Adding record to queue: {record}")
             output_queue.put(record)
         else:
             # Yield records sequentially for single-threaded processing
-            logger.debug(f"Yielding record: {record}")
+            logging.debug(f"Yielding record: {record}")
             yield record
 
     # Signal the consumer that processing is complete
     if output_queue:
-        logger.debug("Signaling consumer that processing is complete.")
+        logging.debug("Signaling consumer that processing is complete.")
         output_queue.put(None)
 
 
@@ -171,12 +171,12 @@ def transform_and_validate_records(records, key_column_mapping):
 
         if missing_keys:
             # Log a warning for missing keys
-            logger.warning(f"Record missing keys: {missing_keys}")
+            logging.warning(f"Record missing keys: {missing_keys}")
 
         transformed_records.append(transformed_record)
 
     # Log the total number of transformed records
-    logger.info(f"Transformed {len(transformed_records)} records.")
+    logging.info(f"Transformed {len(transformed_records)} records.")
     return transformed_records
 
 
