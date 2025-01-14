@@ -1,4 +1,4 @@
-psycopg2==2.9.10
+cx_Oracle==8.3.0
 et_xmlfile==2.0.0
 numpy==2.0.2
 openpyxl==3.1.5
@@ -8,5 +8,3 @@ python-dateutil==2.9.0.post0
 pytz==2024.2
 six==1.17.0
 tzdata==2024.2
-
-cx-Oracle~=8.3.0
