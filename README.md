@@ -12,40 +12,95 @@ This Python project provides a robust set of tools for handling **JSON**, **XML*
 - Handle Excel files with a schema defined on the **third row** and data records starting from the **fourth row**.
 - Export the processed records into a **CSV file** for seamless integration with SQL Loader or database ingestion workflows.
 
+## Configuration Schema
+
+The project uses a configuration schema to map keys in **JSON** or **XML** files to database column names. This ensures seamless data integration by defining explicit key-value mappings.
+
+### Example Configuration Schema
+
+#### **JSON Schema**
+```json
+{
+  "jsonSchema": {
+    "user": "USER",
+    "dt_created": "DT_CREATED",
+    "dt_submitted": "DT_SUBMITTED",
+    "ast_name": "AST_NAME",
+    "location": "LOCATION",
+    "status": "STATUS",
+    "json_hash": "JSON_HASH",
+    "local_id": "LOCAL_ID",
+    "filename": "FILENAME",
+    "fnumber": "FNUMBER",
+    "scan_time": "SCAN_TIME"
+  }
+}
+```
+#### **XML Schema**
+```json
+{
+  "xmlSchema": {
+    "user": "USER",
+    "dt_created": "DT_CREATED",
+    "dt_submitted": "DT_SUBMITTED",
+    "ast_name": "AST_NAME",
+    "location": "LOCATION",
+    "status": "STATUS",
+    "json_hash": "JSON_HASH",
+    "local_id": "LOCAL_ID",
+    "filename": "FILENAME",
+    "fnumber": "FNUMBER",
+    "scan_time": "SCAN_TIME"
+  }
+}
+```
+
+### Key-Value Mapping
+
+- **Key**: Represents the field in the JSON or XML file.
+- **Value**: Specifies the corresponding column name in the database.
+
+### How It Works
+
+#### **JSON Processing**
+- The `jsonSchema` defines the mapping of JSON fields to database columns.
+- **Example**: `"user"` in JSON maps to `"USER"` in the database.
+
+#### **XML Processing**
+- The `xmlSchema` defines the mapping of XML fields to database columns.
+- **Example**: `"location"` in XML maps to `"LOCATION"` in the database.
+
+### Customization
+You can customize the schema by modifying the `jsonSchema` or `xmlSchema` in the configuration file to align with your specific database structure.
+
 
 ## Makefile Commands
 
-### `offline-package`
+### `make offline-package`
 
 ### Purpose
 Prepares all Python dependencies for offline installation. Run this in a connected environment.
 
-### Steps:
+### Steps
 1. Freezes the current Python environment's dependencies into `requirements.txt`.
 2. Downloads the dependencies specified in `requirements.txt` into a `vendor` directory.
 3. Compresses the `vendor` directory into a `vendor.tar.gz` archive for portability.
 
 ---
 
-### `install-offline`
+### `make install-offline`
 
-### **Purpose**:  
+### **Purpose**
 Installs dependencies in a disconnected environment using the `vendor.tar.gz` archive.
 
-### **Pre-requisites**:
+### **Pre-requisites**
 - The `vendor.tar.gz` file and `requirements.txt` must be available in the working directory.  
   - Run `make offline-package` in a connected environment to generate these artifacts.
 
-### **Steps**:
+### **Steps**
 1. Decompresses the `vendor.tar.gz` archive to recreate the `vendor` directory.
 2. Installs dependencies from the `vendor` directory without connecting to the internet.
 
-### **Usage**:
-```bash
-make install-offline
-```
-
-Dependencies installed locally, enabling the utility to execute in a disconnected environment.
 
 ## Example Workflow
 
@@ -67,7 +122,7 @@ The ```vendor.tar.gz``` and ```requirements.txt``` files should be in the workin
 
 ### Cleanup (Optional)
 
-To remove generated files in the connected environment:
+To remove generated dependency files in the environment:
 
 ```make clean-vendor```
 
