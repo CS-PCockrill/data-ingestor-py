@@ -262,7 +262,7 @@ def batch_insert_records(logger, conn, table_name, records):
             logger.log_job(symbol="GS1001I", job_id=job_id, query=query, success=True)
     except Exception as e:
         # Log the error and rollback
-        logger.log_job(symbol="GS2002E", job_id=job_id, query=query, metadata={"exception": str(e)},
+        logger.log_job(symbol="GS2002E", query=query, metadata={"exception": str(e)},
                        success=False)
         conn.rollback()
         raise

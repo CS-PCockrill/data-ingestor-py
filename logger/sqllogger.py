@@ -106,7 +106,7 @@ class SQLLogger:
             metadata (dict): Additional metadata for the log.
             success (bool): Final status of the job (True for success, False for failure).
         """
-        current_time = datetime.datetime.now(datetime.UTC)
+        current_time = datetime.datetime.now(datetime.timezone.utc)
         error = self._get_error_definition(symbol)
         if not error:
             logging.error(f"Cannot log job: Unknown error code '{symbol}'.")
