@@ -132,7 +132,7 @@ class SQLLogger:
 
         severity = error["severity"]
         description = error["description"]
-        message = self._format_message(description, ("Test 1", "Test 2"))
+        message = self._format_message(description, "Test 1", "Test 2")
         metadata_str = json.dumps(metadata) if metadata else None
         host_name = socket.gethostname()
 
