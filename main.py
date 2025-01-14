@@ -253,10 +253,6 @@ def batch_insert_records(logger, conn, table_name, records, config):
                 ', '.join('"{}"'.format(col.lower()) for col in columns)
             )
             values = [[record[col] for col in columns] for record in records]
-            # Convert Unix timestamps to datetime for specific columns
-            for record in records:
-                for col in timestamp_columns:
-                    record[col] = datetime.datetime.fromtimestamp(record[col])
 
             # Log the execution of the query
             job_id = logger.log_job("Testing job id 1", "Testing job id 2", symbol="GS1001I", query=query, success=True)
