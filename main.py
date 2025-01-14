@@ -208,8 +208,6 @@ def write_records_to_csv(records, output_file_path):
         logger.error(f"Failed to write CSV file: {e}")
         raise
 
-
-
 def connect_to_postgres(config):
     """Connect to the PostgreSQL database."""
     try:
@@ -228,79 +226,107 @@ def connect_to_postgres(config):
         logger.error(f"Failed to connect to PostgreSQL: {e}")
         raise
 
-def batch_insert_records(conn, table_name, records):
-    """Perform a batch insert of multiple records into the database."""
+def batch_insert_records(logger, conn, table_name, records):
+    """
+    Perform a batch insert of multiple records into the database with custom logging.
+
+    Args:
+        logger (SQLLogger): Instance of the SQLLogger for custom logging.
+        conn: Database connection object.
+        table_name (str): Name of the target table.
+        records (list): List of records to insert.
+    """
     if not records:
         # Log a warning if there are no records to insert
-        logger.warning("No records to insert.")
+        logger.log_job(symbol="GS2001W", success=False)
         return
 
     try:
         with conn.cursor() as cur:
-            # Prepare the SQL INSERT query with the columns from the records
+            # Prepare the SQL INSERT query
             columns = records[0].keys()
             query = 'INSERT INTO {} ({}) VALUES %s'.format(
                 table_name,
                 ', '.join('"{}"'.format(col.lower()) for col in columns)
             )
-            # Prepare values to be inserted
             values = [[record[col] for col in columns] for record in records]
-            logger.info(f"Executing query for table {table_name} with {len(records)} records.")
 
-            # Execute the batch insert using execute_values for efficiency
+            # Log the execution of the query
+            job_id = logger.log_job(symbol="GS1001I", query=query, success=True)
+
+            # Execute batch insert
             execute_values(cur, query, values)
-            conn.commit()  # Commit the transaction
-            logger.info(f"Successfully inserted {len(records)} records into {table_name}.")
+            conn.commit()
+
+            # Log successful insertion
+            logger.log_job(symbol="GS1001I", job_id=job_id, query=query, success=True)
     except Exception as e:
-        # Log and rollback the transaction if the insert fails
-        logger.error(f"Failed to insert records: {e}")
+        # Log the error and rollback
+        logger.log_job(symbol="GS2002E", job_id=job_id, query=query, metadata={"exception": str(e)},
+                       success=False)
         conn.rollback()
         raise
 
 
-def consumer_transform_and_insert(queue, conn, table_name, key_column_mapping):
-    """Transforms records from the queue and inserts them into PostgreSQL in batches."""
-    batch = []  # List to collect records for batch insertion
+def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_mapping):
+    """
+    Transforms records from the queue and inserts them into PostgreSQL in batches with custom logging.
+
+    Args:
+        logger (SQLLogger): Instance of the SQLLogger for custom logging.
+        queue (Queue): Queue containing records to process.
+        conn: Database connection object.
+        table_name (str): Name of the target table.
+        key_column_mapping (dict): Mapping of JSON keys to database column names.
+        # job_id (int): Job ID for logging context.
+    """
+    batch = []  # Collect records for batch insertion
     while True:
-        record = queue.get()  # Get a record from the queue
+        record = queue.get()
         if record is None:  # Check for the termination signal
             queue.task_done()
-            break  # Exit the loop when the producer signals completion
+            break
 
-        logger.info(f"Received record: {record}")
+        # Log receipt of the record
+        # job_id = logger.log_job(
+        #     error_symbol="GS2005I",  # Informational code
+        #     success=True,
+        # )
+
         # Transform the record based on the key-column mapping
-        transformed_record = {}
-        for json_key, db_column in key_column_mapping.items():
-            transformed_record[db_column] = record.get(json_key)
-
-        # Add the transformed record to the batch
+        transformed_record = {
+            db_column: record.get(json_key)
+            for json_key, db_column in key_column_mapping.items()
+        }
         batch.append(transformed_record)
-        queue.task_done()  # Notify the queue that the task is done
+        queue.task_done()
 
-        # Perform batch insert if the batch size reaches 5
+        # Perform batch insert if batch size reaches threshold
         if len(batch) >= 5:
-            batch_insert_records(conn, table_name, batch)
-            batch.clear()  # Clear the batch after insertion
+            batch_insert_records(logger, conn, table_name, batch)
+            batch.clear()
 
-    # Insert any remaining records in the batch after the loop ends
+    # Insert remaining records in the batch
     if batch:
-        batch_insert_records(conn, table_name, batch)
-    logger.info("Consumer finished processing records.")
+        batch_insert_records(logger, conn, table_name, batch)
+
+    # Log completion of the consumer
+    # logger.log_job(
+    #     error_symbol="GS2006I",  # Informational code
+    #     success=True,
+    # )
 
 
 if __name__ == "__main__":
-    # Command-line arguments to specify the file and interface ID
     parser = argparse.ArgumentParser(description="Stream and process JSON/XML files.")
     parser.add_argument("-file", required=False, help="Path to input JSON/XML file.")
     parser.add_argument("-interface_id", required=True, help="Interface ID.")
     args = parser.parse_args()
 
-    # Validate the provided interface ID
     if args.interface_id not in INTERFACE_IDS:
         logging.error(f"Interface ID '{args.interface_id}' not found in INTERFACE_IDS.")
         raise ValueError(f"Invalid Interface ID: {args.interface_id}")
 
-    # Load the configuration file for the specified interface ID
     config_path = INTERFACE_IDS[args.interface_id]
     try:
         config = load_json_mapping(config_path)
@@ -308,91 +334,60 @@ if __name__ == "__main__":
         logging.error(f"Failed to load configuration: {e}")
         raise
 
-    # Determine the input and output directories from the configuration
     input_directory = config["inputDirectory"]
     output_directory = config["outputDirectory"]
-
-    # Check if a specific file was provided; otherwise process all files
-    if args.file:
-        files_to_process = [os.path.join(input_directory, args.file)]
-    else:
-        # Collect all JSON and XML files from the input directory
-        files_to_process = [
+    files_to_process = (
+        [os.path.join(input_directory, args.file)]
+        if args.file
+        else [
             os.path.join(input_directory, f)
             for f in os.listdir(input_directory)
             if f.endswith(".json") or f.endswith(".xml")
         ]
+    )
 
     if not files_to_process:
         logging.error(f"No .json or .xml files found in {input_directory}.")
         raise ValueError(f"No files to process in {input_directory}.")
 
-    # Switch between PostgreSQL and Oracle by changing the config
-    logger = SQLLogger(config)
-
-    # Start a job
-    job_id = logger.log_job_start("Data Ingestion", metadata={"source": "input.json"})
-
-    try:
-        # Simulate job processing
-        success = True
-        logger.log_job_end(job_id, success=success, message="Ingestion completed successfully.")
-    except Exception as e:
-        logger.log_job_end(job_id, success=False, message=str(e))
-
-    logger.close()
-
-    # Establish a connection to the PostgreSQL database
+    logger = SQLLogger(config, error_table="error_definitions")
     conn = connect_to_postgres(config)
 
-    def process_file_thread(file_path):
-        """Threaded function to process a single file."""
-        # Determine file type and retrieve schema information from the config
+    for file_path in files_to_process:
         file_type = "json" if file_path.endswith(".json") else "xml"
         schema_tag = config.get(f"{file_type}TagName", "Records")
         key_column_mapping = config.get(f"{file_type}Schema")
 
-        record_queue = Queue(maxsize=10)  # Queue to facilitate producer-consumer model
+        # job_id = logger.log_job(
+        #     error_symbol="GS1001I",
+        #     success=True
+        # )
 
-        def producer():
-            """Producer thread to parse file and add records to the queue."""
-            logging.info(f"Starting producer for {file_path}...")
-            for record in process_file(file_path, schema_tag=schema_tag, file_type=file_type):
-                record_queue.put(record)  # Add records to the queue
-            record_queue.put(None)  # Signal end of records
-            logging.info(f"Producer finished processing {file_path}.")
+        record_queue = Queue(maxsize=100)
 
-        def consumer():
-            """Consumer thread to transform and insert records into the database."""
-            logging.info(f"Starting consumer for {file_path}...")
-            consumer_transform_and_insert(record_queue, conn, config["tableName"], key_column_mapping)
+        producer = Thread(
+            target=lambda: [
+                record_queue.put(record)
+                for record in process_file(file_path, schema_tag, file_type)
+            ]
+        )
+        consumer = Thread(
+            target=consumer_transform_and_insert,
+            args=(logger, record_queue, conn, config["tableName"], key_column_mapping),
+        )
 
-        # Start the producer and consumer threads
-        producer_thread = Thread(target=producer)
-        consumer_thread = Thread(target=consumer)
+        producer.start()
+        consumer.start()
 
-        producer_thread.start()
-        consumer_thread.start()
+        producer.join()
+        record_queue.put(None)  # Signal end of records
+        consumer.join()
 
-        producer_thread.join()  # Wait for producer to complete
-        record_queue.join()  # Ensure all tasks in the queue are processed
-        consumer_thread.join()  # Wait for consumer to complete
-
-        # Move the processed file to the output directory
         move_file_to_folder(file_path, output_directory)
 
-
-    # Create and start a thread for each file to process
-    threads = []
-    for file_path in files_to_process:
-        thread = Thread(target=process_file_thread, args=(file_path,))
-        threads.append(thread)
-        thread.start()
-
-    # Wait for all threads to finish
-    for thread in threads:
-        thread.join()
-
-    # Close the database connection after processing all files
     conn.close()
-    logging.info("All files processed successfully.")
+    logger.close()
+    # logger.log_job(
+    #     error_symbol="GS1002I",
+    #     success=True
+    # )

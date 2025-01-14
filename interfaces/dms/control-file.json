@@ -4,7 +4,7 @@
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",
   "errorDefinitionSourceType": "file",
-  "errorDefinitionSourceLocation": "interfaces/error-definitions.json",
+  "errorDefinitionSourceLocation": "error_definitions",
   "host": "localhost",
   "port": 5432,
   "database": "testdb",
