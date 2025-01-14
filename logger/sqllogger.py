@@ -78,8 +78,8 @@ class SQLLogger:
 
                 # Cache the result for future lookups
                 self.error_cache[error_symbol] = {
-                    "severity": error_def["SVRT"],
-                    "description": error_def["DSCR"],
+                    "severity": error_def["svrt"],
+                    "description": error_def["dscr"],
                 }
                 return self.error_cache[error_symbol]
             else:
