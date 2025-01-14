@@ -99,16 +99,17 @@ class SQLLogger:
             raise
 
     def log_job(
-        self,
-        symbol,
-        job_id=None,
-        job_name="Job",
-        job_type=None,
-        query=None,
-        user_id=None,
-        metadata=None,
-        success=None,
-        *args,
+            self,
+            *args,
+            symbol,
+            job_id=None,
+            job_name="Job",
+            job_type=None,
+            query=None,
+            user_id=None,
+            metadata=None,
+            success=None,
+
     ):
         """
         Log a job state with the specified error code and arguments.
@@ -132,7 +133,7 @@ class SQLLogger:
 
         severity = error["severity"]
         description = error["description"]
-        message = self._format_message(description, "Test 1", "Test 2")
+        message = self._format_message(description, *args)
         metadata_str = json.dumps(metadata) if metadata else None
         host_name = socket.gethostname()
 
@@ -140,18 +141,18 @@ class SQLLogger:
             # Insert a new job log
             insert_query = """
             INSERT INTO ss_logs (
-                job_name, job_type, status, start_time, message, query, user_id,
-                host_name, metadata
+                job_name, job_type, severity, status, start_time, message, query,
+                user_id, host_name, metadata
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
             """
             if self.db_type == "oracle":
                 insert_query = """
                 INSERT INTO ss_logs (
-                    job_name, job_type, status, start_time, message, query, user_id,
-                    host_name, metadata
+                    job_name, job_type, severity, status, start_time, message, query,
+                    user_id, host_name, metadata
                 )
-                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9) RETURNING id INTO :10
+                VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10) RETURNING id INTO :11
                 """
             try:
                 self.cursor.execute(
@@ -159,6 +160,7 @@ class SQLLogger:
                     (
                         job_name,
                         job_type,
+                        severity,
                         "IN PROGRESS",
                         current_time,
                         message,

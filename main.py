@@ -252,17 +252,17 @@ def batch_insert_records(logger, conn, table_name, records):
             values = [[record[col] for col in columns] for record in records]
 
             # Log the execution of the query
-            job_id = logger.log_job(symbol="GS1001I", query=query, success=True)
+            job_id = logger.log_job("Testing job id 1", "Testing job id 2", symbol="GS1001I", query=query, success=True)
 
             # Execute batch insert
             execute_values(cur, query, values)
             conn.commit()
 
             # Log successful insertion
-            logger.log_job(symbol="GS1001I", job_id=job_id, query=query, success=True)
+            logger.log_job("Testing 1", "Testing 3", symbol="GS1001I", job_id=job_id, query=query, success=True)
     except Exception as e:
         # Log the error and rollback
-        logger.log_job(symbol="GS2002E", query=query, metadata={"exception": str(e)},
+        logger.log_job("Error 1", "Error 2", symbol="GS2002E", query=query, metadata={"exception": str(e)},
                        success=False)
         conn.rollback()
         raise
