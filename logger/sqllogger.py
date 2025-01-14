@@ -48,28 +48,46 @@ class SQLLogger:
             raise
 
     def _get_error_definition(self, error_symbol):
+        """
+        Fetch the error definition from the database or cache.
+
+        Args:
+            error_symbol (str): The error code to look up.
+
+        Returns:
+            dict: A dictionary containing severity and description, or None if not found.
+        """
         if error_symbol in self.error_cache:
             self.cache_hits += 1
             return self.error_cache[error_symbol]
 
+        # SQL query for fetching the error definition
         query = f"SELECT * FROM {self.error_table} WHERE SYMB = :1" if self.db_type == "oracle" else \
-                f"SELECT * FROM {self.error_table} WHERE SYMB = %s"
+            f"SELECT * FROM {self.error_table} WHERE SYMB = %s"
         try:
+            # Execute the query with the error_symbol
             self.cursor.execute(query, (error_symbol,))
             result = self.cursor.fetchone()
+
             if result:
                 self.cache_misses += 1
-                # Assume columns are mapped to a dictionary (adjust as needed for actual schema)
-                error_def = {
-                    "severity": result["SVRT"],
-                    "description": result["DSCR"],
+
+                # Map the result to a dictionary using the column names
+                column_names = [desc[0] for desc in self.cursor.description]
+                error_def = dict(zip(column_names, result))
+
+                # Cache the result for future lookups
+                self.error_cache[error_symbol] = {
+                    "severity": error_def["SVRT"],
+                    "description": error_def["DSCR"],
                 }
-                self.error_cache[error_symbol] = error_def
-                return error_def
+                return self.error_cache[error_symbol]
             else:
-                logging.warning(f"Error code '{error_symbol}' not found.")
+                # Log a warning if the error code is not found
+                logging.warning(f"Error code '{error_symbol}' not found in {self.error_table}.")
                 return None
         except Exception as e:
+            # Log and raise an exception if the query fails
             logging.error(f"Failed to fetch error definition for '{error_symbol}': {e}")
             raise
 
