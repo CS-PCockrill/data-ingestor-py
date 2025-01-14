@@ -219,11 +219,11 @@ def connect_to_postgres(config):
             user=config["user"],
             password=config["password"]
         )
-        logger.info("Successfully connected to PostgreSQL.")
+        logging.info("Successfully connected to PostgreSQL.")
         return conn  # Return the active connection object
     except Exception as e:
         # Log the error if connection fails
-        logger.error(f"Failed to connect to PostgreSQL: {e}")
+        logging.error(f"Failed to connect to PostgreSQL: {e}")
         raise
 
 def batch_insert_records(logger, conn, table_name, records):
