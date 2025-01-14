@@ -37,5 +37,10 @@
     "filename": "FILENAME",
     "fnumber": "FNUMBER",
     "scan_time": "SCAN_TIME"
-  }
+  },
+  "timestampColumns": [
+    "dt_created",
+    "dt_submitted",
+    "scan_time"
+  ]
 }

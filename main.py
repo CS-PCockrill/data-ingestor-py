@@ -10,6 +10,7 @@ from config.config import INTERFACE_IDS
 from queue import Queue
 from threading import Thread
 import pandas as pd
+import datetime
 
 from helpers import move_file_to_folder, load_json_mapping
 from logger.sqllogger import SQLLogger
@@ -226,7 +227,7 @@ def connect_to_postgres(config):
         logging.error(f"Failed to connect to PostgreSQL: {e}")
         raise
 
-def batch_insert_records(logger, conn, table_name, records):
+def batch_insert_records(logger, conn, table_name, records, config):
     """
     Perform a batch insert of multiple records into the database with custom logging.
 
@@ -241,6 +242,8 @@ def batch_insert_records(logger, conn, table_name, records):
         logger.log_job(symbol="GS2001W", success=False)
         return
 
+    timestamp_columns = config.get("timestampColumns", [])
+
     try:
         with conn.cursor() as cur:
             # Prepare the SQL INSERT query
@@ -250,6 +253,11 @@ def batch_insert_records(logger, conn, table_name, records):
                 ', '.join('"{}"'.format(col.lower()) for col in columns)
             )
             values = [[record[col] for col in columns] for record in records]
+            # Convert Unix timestamps to datetime for specific columns
+            for record in records:
+                for col in timestamp_columns:
+                    if col in record and isinstance(record[col], int):
+                        record[col] = datetime.datetime.fromtimestamp(record[col])
 
             # Log the execution of the query
             job_id = logger.log_job("Testing job id 1", "Testing job id 2", symbol="GS1001I", query=query, success=True)
@@ -268,7 +276,7 @@ def batch_insert_records(logger, conn, table_name, records):
         raise
 
 
-def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_mapping):
+def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_mapping, config):
     """
     Transforms records from the queue and inserts them into PostgreSQL in batches with custom logging.
 
@@ -303,12 +311,12 @@ def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_ma
 
         # Perform batch insert if batch size reaches threshold
         if len(batch) >= 5:
-            batch_insert_records(logger, conn, table_name, batch)
+            batch_insert_records(logger, conn, table_name, batch, config)
             batch.clear()
 
     # Insert remaining records in the batch
     if batch:
-        batch_insert_records(logger, conn, table_name, batch)
+        batch_insert_records(logger, conn, table_name, batch, config)
 
     # Log completion of the consumer
     # logger.log_job(
@@ -373,7 +381,7 @@ if __name__ == "__main__":
         )
         consumer = Thread(
             target=consumer_transform_and_insert,
-            args=(logger, record_queue, conn, config["tableName"], key_column_mapping),
+            args=(logger, record_queue, conn, config["tableName"], key_column_mapping, config),
         )
 
         producer.start()
