@@ -46,7 +46,7 @@ class SQLLogger:
                 job_name, job_type, symb, severity, status, start_time, message,
                 error_message, query, values, artifact_name, user_id, host_name, table_name,
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
             """
             try:
                 self.cursor.execute(
