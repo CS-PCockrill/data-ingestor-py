@@ -24,16 +24,21 @@ CREATE TABLE ss_logs (
     id SERIAL PRIMARY KEY,              -- Unique identifier for each log entry
     job_name VARCHAR(255) NOT NULL,     -- Name of the job
     job_type VARCHAR(100),              -- Type/category of the job
+    symb VARCHAR(10) NOT NULL,          -- Symbol for the error code (e.g., GS6782E)
     severity VARCHAR(1),                -- Severity level (I, W, E, S)
     status VARCHAR(50) NOT NULL,        -- Status of the job (e.g., IN PROGRESS, SUCCESS, FAILURE)
     start_time TIMESTAMP NOT NULL,      -- Start time of the job
-    end_time TIMESTAMP,                 -- End time of the job
+    end_time TIMESTAMP,                 -- End time of the job (nullable)
     message TEXT,                       -- Log message
+    error_message TEXT,                 -- Error details or additional information
     query TEXT,                         -- SQL query associated with the job
+    values TEXT,                        -- JSON-encoded string of query values/parameters
+    table_name VARCHAR(50),
+    artifact_name VARCHAR(255),         -- Name of the artifact being processed
     user_id VARCHAR(255),               -- ID of the user who initiated the job
-    host_name VARCHAR(255),             -- Hostname of the machine running the job
-    metadata JSONB                      -- Additional metadata for the job
+    host_name VARCHAR(255)              -- Hostname of the machine running the job
 );
+
 
 -- Create the error_definitions table
 CREATE TABLE error_definitions (

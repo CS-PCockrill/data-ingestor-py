@@ -1,4 +1,5 @@
 {
+  "interfaceType": "MistAMS JSON/XML Flat File Ingestion Interface",
   "type": "postgresql",
   "tableName": "SFLW_RECS",
   "outputDirectory": "interfaces/mist-ams/archive",

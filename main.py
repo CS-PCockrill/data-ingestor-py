@@ -2,6 +2,7 @@ import json
 import argparse
 import os.path
 import xml.etree.ElementTree as ET
+
 import psycopg2
 from psycopg2.extras import execute_values
 import logging
@@ -10,10 +11,8 @@ from config.config import INTERFACE_IDS
 from queue import Queue
 from threading import Thread
 import pandas as pd
-import datetime
-
 from helpers import move_file_to_folder, load_json_mapping
-from logger.sqllogger import SQLLogger
+from logger.sqllogger import SQLLogger, LoggerContext
 
 # Configure logger
 logging.basicConfig(
@@ -23,163 +22,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-def flatten_dict(data):
-    """Flattens a nested dictionary and integrates repeated elements as individual rows."""
-    # Initialize the base record, which stores non-nested key-value pairs
-    base_record = {}
-    # List to store records resulting from nested elements
-    nested_records = []
-
-    # Iterate through the dictionary items
-    for key, value in data.items():
-        if isinstance(value, list):
-            # If the value is a list, iterate through the list
-            for nested in value:
-                if isinstance(nested, dict):
-                    # Copy the base record and merge nested dictionaries
-                    new_record = base_record.copy()
-                    new_record.update(nested)
-                    nested_records.append(new_record)
-        elif isinstance(value, dict):
-            # If the value is a dictionary, merge it with the base record
-            base_record.update(value)
-        else:
-            # If the value is neither a list nor a dictionary, add it to the base record
-            base_record[key] = value
-
-    # If there are no nested records, return the base record as a single-item list
-    if not nested_records:
-        return [base_record]
-
-    # Update each nested record with the base record values
-    for record in nested_records:
-        record.update(base_record)
-
-    return nested_records
-
-
-def parse_json_file(file_path, schema_tag="Records"):
-    """Parses and flattens JSON records from a file."""
-    try:
-        # Open and load the JSON file
-        with open(file_path, "r") as file:
-            data = json.load(file)
-            logging.info(f"Successfully loaded JSON file: {file_path}")
-    except FileNotFoundError:
-        # Handle case where the file does not exist
-        logging.error(f"JSON file not found: {file_path}")
-        raise
-    except json.JSONDecodeError as e:
-        # Handle invalid JSON syntax
-        logging.error(f"Error parsing JSON file: {e}")
-        raise
-
-    # Extract records using the schema tag
-    records = data.get(schema_tag, data)
-
-    # Flatten and yield each record
-    if isinstance(records, list):
-        for record in records:
-            for flattened in flatten_dict(record):
-                yield flattened
-    elif isinstance(records, dict):
-        for flattened in flatten_dict(records):
-            yield flattened
-
-
-def parse_xml_file(file_path, schema_tag="Record"):
-    """Parses and flattens XML records from a file."""
-    try:
-        # Parse the XML file
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        logging.info(f"Successfully parsed XML file: {file_path}")
-    except FileNotFoundError:
-        # Handle case where the file does not exist
-        logging.error(f"XML file not found: {file_path}")
-        raise
-    except ET.ParseError as e:
-        # Handle invalid XML syntax
-        logging.error(f"Error parsing XML file: {e}")
-        raise
-
-    def parse_element(element):
-        """Recursively parses an XML element into a dictionary."""
-        record = {}
-        for child in element:
-            if len(child) > 0:
-                # Handle nested elements by appending to a list
-                if child.tag not in record:
-                    record[child.tag] = []
-                record[child.tag].append(parse_element(child))
-            else:
-                # Add leaf node text to the record
-                record[child.tag] = child.text.strip() if child.text else None
-        return record
-
-    # Extract records and flatten them
-    for record_element in root.findall(f".//{schema_tag}"):
-        raw_record = parse_element(record_element)
-        flattened_records = flatten_dict(raw_record)
-        for record in flattened_records:
-            yield record
-
-
-def process_file(file_path, schema_tag, file_type="json", output_queue=None):
-    """
-    Processes a file (JSON or XML), flattens records, and optionally queues them.
-
-    Args:
-        file_path (str): Path to the input file.
-        schema_tag (str): The schema tag name for JSON/XML records.
-        file_type (str): Either 'json' or 'xml' to specify file type.
-        output_queue (queue.Queue): Optional queue to stream records to a consumer.
-    """
-    # Choose the parser based on file type
-    parser = parse_json_file if file_type == "json" else parse_xml_file
-
-    # Iterate through parsed records
-    for record in parser(file_path, schema_tag=schema_tag):
-        if output_queue:
-            # Put records into the queue for parallel processing
-            logging.debug(f"Adding record to queue: {record}")
-            output_queue.put(record)
-        else:
-            # Yield records sequentially for single-threaded processing
-            logging.debug(f"Yielding record: {record}")
-            yield record
-
-    # Signal the consumer that processing is complete
-    if output_queue:
-        logging.debug("Signaling consumer that processing is complete.")
-        output_queue.put(None)
-
-
-def transform_and_validate_records(records, key_column_mapping):
-    """Transform and validate a list of records based on a key-column mapping."""
-    transformed_records = []
-    for record in records:
-        transformed_record = {}
-        missing_keys = set()
-
-        # Map keys from the record to the specified schema
-        for json_key, db_column in key_column_mapping.items():
-            if json_key in record:
-                transformed_record[db_column] = record[json_key]
-            else:
-                missing_keys.add(json_key)
-
-        if missing_keys:
-            # Log a warning for missing keys
-            logging.warning(f"Record missing keys: {missing_keys}")
-
-        transformed_records.append(transformed_record)
-
-    # Log the total number of transformed records
-    logging.info(f"Transformed {len(transformed_records)} records.")
-    return transformed_records
-
 
 def write_records_to_csv(records, output_file_path):
     """
@@ -191,7 +33,7 @@ def write_records_to_csv(records, output_file_path):
     """
     if not records:
         # Log a warning if no records are available
-        logger.warning("No records to write to CSV.")
+        logging.warning("No records to write to CSV.")
         return
 
     try:
@@ -203,114 +45,366 @@ def write_records_to_csv(records, output_file_path):
 
         # Write DataFrame to a CSV file
         df.to_csv(output_file_path, index=False, sep='|', encoding='utf-8')
-        logger.info(f"CSV file successfully written to: {output_file_path}")
+        logging.info(f"CSV file successfully written to: {output_file_path}")
     except Exception as e:
         # Handle errors during file writing
-        logger.error(f"Failed to write CSV file: {e}")
+        logging.error(f"Failed to write CSV file: {e}")
         raise
 
-def connect_to_postgres(config):
-    """Connect to the PostgreSQL database."""
-    try:
-        # Establish connection to the PostgreSQL database using credentials from the config
-        conn = psycopg2.connect(
-            host=config["host"],
-            port=config["port"],
-            database=config["database"],
-            user=config["user"],
-            password=config["password"]
-        )
-        logging.info("Successfully connected to PostgreSQL.")
-        return conn  # Return the active connection object
-    except Exception as e:
-        # Log the error if connection fails
-        logging.error(f"Failed to connect to PostgreSQL: {e}")
-        raise
+class FileProcessor:
+    def __init__(self, logger, config):
+        """
+        Initialize the FileProcessor.
 
-def batch_insert_records(logger, conn, table_name, records, config):
-    """
-    Perform a batch insert of multiple records into the database with custom logging.
+        Args:
+            logger (SQLLogger): Logger instance for logging operations.
+            config (dict): Configuration dictionary with database and processing details.
+        """
+        self.logger = logger
+        self.config = config
+        self.conn = self._connect_to_postgres()
+        self.table_name = config["tableName"]
+        self.batch_size = config["sqlBatchSize"]
 
-    Args:
-        logger (SQLLogger): Instance of the SQLLogger for custom logging.
-        conn: Database connection object.
-        table_name (str): Name of the target table.
-        records (list): List of records to insert.
-    """
-    if not records:
-        # Log a warning if there are no records to insert
-        logger.log_job(symbol="GS2001W", success=False)
-        return
+    def _connect_to_postgres(self):
+        """
+        Establish a connection to the PostgreSQL database.
 
-    # Log the execution of the query
-    job_id = logger.log_job("", "", symbol="GS1002I", user_id=config['user'])
-
-    try:
-        with conn.cursor() as cur:
-            # Prepare the SQL INSERT query
-            columns = records[0].keys()
-            query = 'INSERT INTO {} ({}) VALUES %s'.format(
-                table_name,
-                ', '.join('"{}"'.format(col.lower()) for col in columns)
+        Returns:
+            psycopg2.connection: Database connection object.
+        """
+        try:
+            conn = psycopg2.connect(
+                host=self.config["host"],
+                port=self.config["port"],
+                database=self.config["database"],
+                user=self.config["user"],
+                password=self.config["password"]
             )
-            values = [[record[col] for col in columns] for record in records]
+            logging.info("Successfully connected to PostgreSQL.")
+            return conn
+        except Exception as e:
+            logging.error(f"Failed to connect to PostgreSQL: {e}")
+            raise
 
-            # Execute batch insert
-            execute_values(cur, query, values)
-            conn.commit()
+    def flatten_dict(self, data):
+        """Flattens a nested dictionary and integrates repeated elements as individual rows."""
+        # Initialize the base record, which stores non-nested key-value pairs
+        base_record = {}
+        # List to store records resulting from nested elements
+        nested_records = []
 
-            # Log successful insertion
-            logger.log_job(query, values, symbol="GS1002I", job_id=job_id, query=query, success=True)
-    except Exception as e:
-        # Log the error and rollback
-        logger.log_job(str(e), symbol="GS2002E", job_id=job_id, query=query, success=False)
-        conn.rollback()
-        raise
+        # Iterate through the dictionary items
+        for key, value in data.items():
+            if isinstance(value, list):
+                # If the value is a list, iterate through the list
+                for nested in value:
+                    if isinstance(nested, dict):
+                        # Copy the base record and merge nested dictionaries
+                        new_record = base_record.copy()
+                        new_record.update(nested)
+                        nested_records.append(new_record)
+            elif isinstance(value, dict):
+                # If the value is a dictionary, merge it with the base record
+                base_record.update(value)
+            else:
+                # If the value is neither a list nor a dictionary, add it to the base record
+                base_record[key] = value
+
+        # If there are no nested records, return the base record as a single-item list
+        if not nested_records:
+            return [base_record]
+
+        # Update each nested record with the base record values
+        for record in nested_records:
+            record.update(base_record)
+
+        return nested_records
+
+    def parse_json_file(self, file_path, schema_tag="Records"):
+        """Parses and flattens JSON records from a file."""
+        try:
+            # Open and load the JSON file
+            with open(file_path, "r") as file:
+                data = json.load(file)
+                logging.info(f"Successfully loaded JSON file: {file_path}")
+        except FileNotFoundError:
+            # Handle case where the file does not exist
+            logging.error(f"JSON file not found: {file_path}")
+            raise
+        except json.JSONDecodeError as e:
+            # Handle invalid JSON syntax
+            logging.error(f"Error parsing JSON file: {e}")
+            raise
+
+        # Extract records using the schema tag
+        records = data.get(schema_tag, data)
+
+        # Flatten and yield each record
+        if isinstance(records, list):
+            for record in records:
+                for flattened in self.flatten_dict(record):
+                    yield flattened
+        elif isinstance(records, dict):
+            for flattened in self.flatten_dict(records):
+                yield flattened
+
+    def parse_xml_file(self, file_path, schema_tag="Record"):
+        """Parses and flattens XML records from a file."""
+        try:
+            # Parse the XML file
+            tree = ET.parse(file_path)
+            root = tree.getroot()
+            logging.info(f"Successfully parsed XML file: {file_path}")
+        except FileNotFoundError:
+            # Handle case where the file does not exist
+            logging.error(f"XML file not found: {file_path}")
+            raise
+        except ET.ParseError as e:
+            # Handle invalid XML syntax
+            logging.error(f"Error parsing XML file: {e}")
+            raise
+
+        def parse_element(element):
+            """Recursively parses an XML element into a dictionary."""
+            record = {}
+            for child in element:
+                if len(child) > 0:
+                    # Handle nested elements by appending to a list
+                    if child.tag not in record:
+                        record[child.tag] = []
+                    record[child.tag].append(parse_element(child))
+                else:
+                    # Add leaf node text to the record
+                    record[child.tag] = child.text.strip() if child.text else None
+            return record
+
+        # Extract records and flatten them
+        for record_element in root.findall(f".//{schema_tag}"):
+            raw_record = parse_element(record_element)
+            flattened_records = self.flatten_dict(raw_record)
+            for record in flattened_records:
+                yield record
+
+    def process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
+        """
+        Processes a file (JSON or XML), flattens records, and optionally queues them.
+
+        Args:
+            file_path (str): Path to the input file.
+            schema_tag (str): The schema tag name for JSON/XML records.
+            file_type (str): Either 'json' or 'xml' to specify file type.
+            output_queue (queue.Queue): Optional queue to stream records to a consumer.
+        """
+        # Choose the parser based on file type
+        parser = self.parse_json_file if file_type == "json" else self.parse_xml_file
+
+        # Iterate through parsed records
+        for record in parser(file_path, schema_tag=schema_tag):
+            if output_queue:
+                # Put records into the queue for parallel processing
+                logging.debug(f"Adding record to queue: {record}")
+                output_queue.put(record)
+            else:
+                # Yield records sequentially for single-threaded processing
+                logging.debug(f"Yielding record: {record}")
+                yield record
+
+        # Signal the consumer that processing is complete
+        if output_queue:
+            logging.debug("Signaling consumer that processing is complete.")
+            output_queue.put(None)
+
+    def transform_and_validate_records(self, records, key_column_mapping):
+        """Transform and validate a list of records based on a key-column mapping."""
+        transformed_records = []
+        for record in records:
+            transformed_record = {}
+            missing_keys = set()
+
+            # Map keys from the record to the specified schema
+            for json_key, db_column in key_column_mapping.items():
+                if json_key in record:
+                    transformed_record[db_column] = record[json_key]
+                else:
+                    missing_keys.add(json_key)
+
+            if missing_keys:
+                # Log a warning for missing keys
+                logging.warning(f"Record missing keys: {missing_keys}")
+
+            transformed_records.append(transformed_record)
+
+        # Log the total number of transformed records
+        logging.info(f"Transformed {len(transformed_records)} records.")
+        return transformed_records
 
 
-def consumer_transform_and_insert(logger, queue, conn, table_name, key_column_mapping, config):
-    """
-    Transforms records from the queue and inserts them into PostgreSQL in batches with custom logging.
+    def batch_insert_records(self, records, artifact_name):
+        """
+        Perform a batch insert of multiple records into the database.
 
-    Args:
-        logger (SQLLogger): Instance of the SQLLogger for custom logging.
-        queue (Queue): Queue containing records to process.
-        conn: Database connection object.
-        table_name (str): Name of the target table.
-        key_column_mapping (dict): Mapping of JSON keys to database column names.
-        # job_id (int): Job ID for logging context.
-    """
-    batch = []  # Collect records for batch insertion
-    while True:
-        record = queue.get()
-        if record is None:  # Check for the termination signal
+        Args:
+            records (list): List of records to insert.
+            artifact_name (str): Name of the artifact being processed.
+        """
+        if not records:
+            self.logger.log_job(
+                symbol="GS2001W",
+                job_name=f"{self.table_name} BATCH INS",
+                success=False,
+                artifact_name=artifact_name,
+            )
+            return
+
+        job_id = self.logger.log_job(
+            "",
+            "",
+            symbol="GS1002I",
+            job_name=f"{self.table_name} BATCH INS",
+            artifact_name=artifact_name,
+        )
+
+        try:
+            with self.conn.cursor() as cur:
+                columns = records[0].keys()
+                query = 'INSERT INTO {} ({}) VALUES %s'.format(
+                    self.table_name,
+                    ', '.join('"{}"'.format(col.lower()) for col in columns)
+                )
+                values = [[record[col] for col in columns] for record in records]
+
+                execute_values(cur, query, values)
+                self.conn.commit()
+
+                self.logger.log_job(
+                    query,
+                    values,
+                    symbol="GS1002I",
+                    job_name=f"{self.table_name} BATCH INS",
+                    job_id=job_id,
+                    query=query,
+                    values=values,
+                    artifact_name=artifact_name,
+                    success=True,
+                )
+        except Exception as e:
+            self.logger.log_job(
+                str(e),
+                symbol="GS2002E",
+                job_name=f"{self.table_name} BATCH INS",
+                job_id=job_id,
+                query=query,
+                artifact_name=artifact_name,
+                success=False,
+                error_message=str(e),
+            )
+            self.conn.rollback()
+            raise
+
+    def consume_and_insert(self, queue, key_column_mapping, artifact_name):
+        """
+        Consume records from the queue, transform, and batch insert them into the database.
+
+        Args:
+            queue (Queue): Queue containing records to process.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+            artifact_name (str): Name of the artifact being processed.
+        """
+        batch = []
+        while True:
+            record = queue.get()
+            if record is None:
+                queue.task_done()
+                break
+
+            batch.append(self._transform_record(record, key_column_mapping))
             queue.task_done()
-            break
 
-        # Transform the record based on the key-column mapping
+            if len(batch) >= self.batch_size:
+                self.batch_insert_records(batch, artifact_name)
+                batch.clear()
+
+        if batch:
+            self.batch_insert_records(batch, artifact_name)
+
+    def process(self, file_path, file_type, schema_tag, key_column_mapping):
+        """
+        Process the given file, producing records and consuming them for batch insert.
+
+        Args:
+            file_path (str): Path to the file to process.
+            file_type (str): Type of the file ("json" or "xml").
+            schema_tag (str): Schema tag name for JSON/XML parsing.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+        """
+        queue = Queue(maxsize=100)
+
+        producer = Thread(
+            target=lambda: [
+                queue.put(record)
+                for record in self.process_file(file_path, schema_tag, file_type)
+            ]
+        )
+        consumer = Thread(
+            target=self.consume_and_insert,
+            args=(queue, key_column_mapping, file_path),
+        )
+
+        producer.start()
+        consumer.start()
+
+        producer.join()
+        queue.put(None)  # Signal the end of records
+        consumer.join()
+
+        logging.info(f"File {file_path} processed successfully.")
+
+    def get_schema_and_tag(self, file_type):
+        """
+        Get the schema and tag name dynamically based on the file type.
+
+        Args:
+            file_type (str): File type, either 'json' or 'xml'.
+
+        Returns:
+            tuple: A tuple containing the schema and tag name for the specified file type.
+        """
+        if file_type == "json":
+            return self.config.get("jsonSchema"), self.config.get("jsonTagName", "Records")
+        elif file_type == "xml":
+            return self.config.get("xmlSchema"), self.config.get("xmlTagName", "Record")
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
+
+    def process_files(self, files):
+        """
+        Process a list of files dynamically based on their file types.
+
+        Args:
+            files (list): List of file paths to process.
+        """
+        for file_path in files:
+            file_type = "json" if file_path.endswith(".json") else "xml"
+            schema, tag_name = self.get_schema_and_tag(file_type)
+            logging.info(f"Processing file {file_path} as {file_type}.")
+            self.process(file_path, file_type, tag_name, schema)
+
+    def _transform_record(self, record, key_column_mapping):
         transformed_record = {
             db_column: record.get(json_key)
             for json_key, db_column in key_column_mapping.items()
         }
-        transformed_record['processed'] = False  # Add the processed flag during transformation
+        transformed_record["processed"] = False
+        return transformed_record
 
-        batch.append(transformed_record)
-        queue.task_done()
+    def close(self):
+        """
+        Close the database connection and release resources.
+        """
+        self.conn.close()
+        logging.info("Database connection closed.")
 
-        # Perform batch insert if batch size reaches threshold
-        if len(batch) >= config['sqlBatchSize']:
-            batch_insert_records(logger, conn, table_name, batch, config)
-            batch.clear()
-
-    # Insert remaining records in the batch
-    if batch:
-        batch_insert_records(logger, conn, table_name, batch, config)
-
-    # Log completion of the consumer
-    # logger.log_job(
-    #     error_symbol="GS2006I",  # Informational code
-    #     success=True,
-    # )
 
 
 if __name__ == "__main__":
@@ -330,59 +424,21 @@ if __name__ == "__main__":
         logging.error(f"Failed to load configuration: {e}")
         raise
 
-    input_directory = config["inputDirectory"]
-    output_directory = config["outputDirectory"]
-    files_to_process = (
-        [os.path.join(input_directory, args.file)]
-        if args.file
-        else [
-            os.path.join(input_directory, f)
-            for f in os.listdir(input_directory)
-            if f.endswith(".json") or f.endswith(".xml")
-        ]
-    )
+    files = [os.path.join(config["inputDirectory"], args.file)] if args.file else [
+        os.path.join(config["inputDirectory"], f)
+        for f in os.listdir(config["inputDirectory"])
+        if f.endswith(".json") or f.endswith(".xml")
+    ]
 
-    if not files_to_process:
-        logging.error(f"No .json or .xml files found in {input_directory}.")
-        raise ValueError(f"No files to process in {input_directory}.")
+    if not files:
+        logging.error(f"No .json or .xml files found in {config['inputDirectory']}.")
+        raise ValueError(f"No files to process in {config['inputDirectory']}.")
 
-    logger = SQLLogger(config, error_table=config["errorDefinitionSourceLocation"])
-    conn = connect_to_postgres(config)
+    logger = SQLLogger(config, error_table=config["errorDefinitionSourceLocation"], context=LoggerContext(config['interfaceType'], config['user'], config['tableName']))
+    processor = FileProcessor(logger, config)
 
-    for file_path in files_to_process:
-        file_type = "json" if file_path.endswith(".json") else "xml"
-        schema_tag = config.get(f"{file_type}TagName", "Records")
-        key_column_mapping = config.get(f"{file_type}Schema")
+    processor.process_files(files)
 
-        job_id = logger.log_job(file_path, config["tableName"], symbol="GS1001I", user_id=config["user"])
-
-        record_queue = Queue(maxsize=100)
-
-        producer = Thread(
-            target=lambda: [
-                record_queue.put(record)
-                for record in process_file(file_path, schema_tag, file_type)
-            ]
-        )
-        consumer = Thread(
-            target=consumer_transform_and_insert,
-            args=(logger, record_queue, conn, config["tableName"], key_column_mapping, config),
-        )
-
-        producer.start()
-        consumer.start()
-
-        producer.join()
-        record_queue.put(None)  # Signal end of records
-        consumer.join()
-
-        move_file_to_folder(file_path, output_directory)
-        logger.log_job(file_path, config["tableName"], job_id=job_id, symbol="GS1001I", user_id=config["user"], success=True)
-
-
-    conn.close()
+    processor.close()
     logger.close()
-    # logger.log_job(
-    #     error_symbol="GS1002I",
-    #     success=True
-    # )
+
