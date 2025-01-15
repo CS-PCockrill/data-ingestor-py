@@ -35,39 +35,72 @@ class SQLLogger:
             logging.error(f"Failed to connect to database: {e}")
             raise
 
-    def log_job(self, *args, symbol, job_id=None, job_name="Job", job_type=None, query=None, values=None, artifact_name=None, success=None, error_message=None):
+    def log_job(
+            self,
+            *args,
+            symbol,
+            job_id=None,
+            job_name="Job",
+            job_type=None,
+            query=None,
+            values=None,
+            artifact_name=None,
+            success=None,
+            error_message=None,
+    ):
+        """
+        Log a job to the database. Inserts a new job if `job_id` is None, otherwise updates the existing job.
+
+        Args:
+            *args: Additional arguments for error message formatting.
+            symbol (str): Error symbol/code.
+            job_id (int): ID of the job to update (None for new jobs).
+            job_name (str): Name of the job.
+            job_type (str): Type/category of the job.
+            query (str): SQL query associated with the job.
+            values (list or dict): Values for the query.
+            artifact_name (str): Name of the artifact being processed.
+            success (bool): Job success status (True/False).
+            error_message (str): Error details if any.
+
+        Returns:
+            int: ID of the logged or updated job.
+        """
         current_time = datetime.datetime.now(datetime.timezone.utc)
         host_name = socket.gethostname()
+
+        # Resolve severity and message using the provided symbol and arguments
         severity, message = self._resolve_error(symbol, *args)
 
         if job_id is None:
+            # Insert a new job log
             insert_query = """
             INSERT INTO ss_logs (
                 job_name, job_type, symb, severity, status, start_time, message,
-                error_message, query, values, artifact_name, user_id, host_name, table_name,
+                error_message, query, values, artifact_name, user_id, host_name, table_name
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
             """
+            parameters = (
+                job_name,
+                job_type or self.context.interface_type,
+                symbol,
+                severity,
+                "IN PROGRESS",
+                current_time,
+                message,
+                error_message,
+                query,
+                json.dumps(values) if values else None,
+                artifact_name,
+                self.context.user_id,
+                host_name,
+                self.context.table_name,
+            )
             try:
-                self.cursor.execute(
-                    insert_query,
-                    (
-                        job_name,
-                        job_type or self.context.interface_type,
-                        symbol,
-                        severity,
-                        "IN PROGRESS",
-                        current_time,
-                        message,
-                        error_message,
-                        query,
-                        json.dumps(values) if values else None,
-                        artifact_name,
-                        self.context.user_id,
-                        host_name,
-                        self.context.table_name,
-                    ),
-                )
+                logging.debug(f"Executing query: {insert_query}")
+                logging.debug(f"Parameters: {parameters}")
+                self.cursor.execute(insert_query, parameters)
                 job_id = self.cursor.fetchone()[0]
                 self.conn.commit()
                 logging.info(f"Job logged with ID {job_id}: {message}")
@@ -76,26 +109,28 @@ class SQLLogger:
                 logging.error(f"Failed to log job: {e}")
                 raise
         else:
+            # Update an existing job log
             update_query = """
             UPDATE ss_logs
-            SET status = %s, message = %s, error_message = %s, query = %s, values = %s, user_id = %s, table_name = %s
+            SET status = %s, message = %s, error_message = %s, query = %s, values = %s, 
+                user_id = %s, table_name = %s
             WHERE id = %s
             """
             status = "SUCCESS" if success else "FAILURE"
+            parameters = (
+                status,
+                message,
+                error_message,
+                query,
+                json.dumps(values) if values else None,
+                self.context.user_id,
+                self.context.table_name,
+                job_id,
+            )
             try:
-                self.cursor.execute(
-                    update_query,
-                    (
-                        status,
-                        message,
-                        error_message,
-                        query,
-                        json.dumps(values) if values else None,
-                        self.context.user_id,
-                        self.context.table_name,
-                        job_id,
-                    ),
-                )
+                logging.debug(f"Executing query: {update_query}")
+                logging.debug(f"Parameters: {parameters}")
+                self.cursor.execute(update_query, parameters)
                 self.conn.commit()
                 logging.info(f"Job ID {job_id} updated to {status}: {message}")
             except Exception as e:
