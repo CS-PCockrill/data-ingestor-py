@@ -87,7 +87,7 @@ class FileProcessor:
             logging.error(f"Failed to connect to PostgreSQL: {e}")
             raise
 
-    def flatten_dict(self, data):
+    def _flatten_dict(self, data):
         """Flattens a nested dictionary and integrates repeated elements as individual rows."""
         # Initialize the base record, which stores non-nested key-value pairs
         base_record = {}
@@ -121,7 +121,7 @@ class FileProcessor:
 
         return nested_records
 
-    def parse_json_file(self, file_path, schema_tag="Records"):
+    def _parse_json_file(self, file_path, schema_tag="Records"):
         """Parses and flattens JSON records from a file."""
         try:
             # Open and load the JSON file
@@ -143,13 +143,13 @@ class FileProcessor:
         # Flatten and yield each record
         if isinstance(records, list):
             for record in records:
-                for flattened in self.flatten_dict(record):
+                for flattened in self._flatten_dict(record):
                     yield flattened
         elif isinstance(records, dict):
-            for flattened in self.flatten_dict(records):
+            for flattened in self._flatten_dict(records):
                 yield flattened
 
-    def parse_xml_file(self, file_path, schema_tag="Record"):
+    def _parse_xml_file(self, file_path, schema_tag="Record"):
         """Parses and flattens XML records from a file."""
         try:
             # Parse the XML file
@@ -182,11 +182,11 @@ class FileProcessor:
         # Extract records and flatten them
         for record_element in root.findall(f".//{schema_tag}"):
             raw_record = parse_element(record_element)
-            flattened_records = self.flatten_dict(raw_record)
+            flattened_records = self._flatten_dict(raw_record)
             for record in flattened_records:
                 yield record
 
-    def process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
+    def _process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
         """
         Processes a file (JSON or XML), flattens records, and optionally queues them.
 
@@ -197,7 +197,7 @@ class FileProcessor:
             output_queue (queue.Queue): Optional queue to stream records to a consumer.
         """
         # Choose the parser based on file type
-        parser = self.parse_json_file if file_type == "json" else self.parse_xml_file
+        parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
 
         # Iterate through parsed records
         for record in parser(file_path, schema_tag=schema_tag):
@@ -215,7 +215,7 @@ class FileProcessor:
             logging.debug("Signaling consumer that processing is complete.")
             output_queue.put(None)
 
-    def transform_and_validate_records(self, records, key_column_mapping):
+    def _transform_and_validate_records(self, records, key_column_mapping):
         """Transform and validate a list of records based on a key-column mapping."""
         transformed_records = []
         for record in records:
@@ -240,7 +240,7 @@ class FileProcessor:
         return transformed_records
 
 
-    def batch_insert_records(self, records, artifact_name):
+    def _batch_insert_records(self, records, artifact_name):
         """
         Perform a batch insert of multiple records into the database.
 
@@ -302,7 +302,7 @@ class FileProcessor:
             self.conn.rollback()
             raise
 
-    def consume_and_insert(self, queue, key_column_mapping, artifact_name):
+    def _consume_and_insert(self, queue, key_column_mapping, artifact_name):
         """
         Consume records from the queue, transform, and batch insert them into the database.
 
@@ -322,13 +322,13 @@ class FileProcessor:
             queue.task_done()
 
             if len(batch) >= self.batch_size:
-                self.batch_insert_records(batch, artifact_name)
+                self._batch_insert_records(batch, artifact_name)
                 batch.clear()
 
         if batch:
-            self.batch_insert_records(batch, artifact_name)
+            self._batch_insert_records(batch, artifact_name)
 
-    def process(self, file_path, file_type, schema_tag, key_column_mapping):
+    def _process(self, file_path, file_type, schema_tag, key_column_mapping):
         """
         Process the given file, producing records and consuming them for batch insert.
 
@@ -343,11 +343,11 @@ class FileProcessor:
         producer = Thread(
             target=lambda: [
                 queue.put(record)
-                for record in self.process_file(file_path, schema_tag, file_type)
+                for record in self._process_file(file_path, schema_tag, file_type)
             ]
         )
         consumer = Thread(
-            target=self.consume_and_insert,
+            target=self._consume_and_insert,
             args=(queue, key_column_mapping, file_path),
         )
 
@@ -360,7 +360,7 @@ class FileProcessor:
 
         logging.info(f"File {file_path} processed successfully.")
 
-    def get_schema_and_tag(self, file_type):
+    def _get_schema_and_tag(self, file_type):
         """
         Get the schema and tag name dynamically based on the file type.
 
@@ -377,6 +377,14 @@ class FileProcessor:
         else:
             raise ValueError(f"Unsupported file type: {file_type}")
 
+    def _transform_record(self, record, key_column_mapping):
+        transformed_record = {
+            db_column: record.get(json_key)
+            for json_key, db_column in key_column_mapping.items()
+        }
+        transformed_record["processed"] = False
+        return transformed_record
+
     def process_files(self, files):
         """
         Process a list of files dynamically based on their file types.
@@ -386,17 +394,9 @@ class FileProcessor:
         """
         for file_path in files:
             file_type = "json" if file_path.endswith(".json") else "xml"
-            schema, tag_name = self.get_schema_and_tag(file_type)
+            schema, tag_name = self._get_schema_and_tag(file_type)
             logging.info(f"Processing file {file_path} as {file_type}.")
-            self.process(file_path, file_type, tag_name, schema)
-
-    def _transform_record(self, record, key_column_mapping):
-        transformed_record = {
-            db_column: record.get(json_key)
-            for json_key, db_column in key_column_mapping.items()
-        }
-        transformed_record["processed"] = False
-        return transformed_record
+            self._process(file_path, file_type, tag_name, schema)
 
     def close(self):
         """
@@ -434,7 +434,7 @@ if __name__ == "__main__":
         logging.error(f"No .json or .xml files found in {config['inputDirectory']}.")
         raise ValueError(f"No files to process in {config['inputDirectory']}.")
 
-    logger = SQLLogger(config, error_table=config["errorDefinitionSourceLocation"], context=LoggerContext(config['interfaceType'], config['user'], config['tableName']))
+    logger = SQLLogger(config, context=LoggerContext(config['interfaceType'], config['user'], config['tableName'], config['errorDefinitionSourceLocation']))
     processor = FileProcessor(logger, config)
 
     processor.process_files(files)
