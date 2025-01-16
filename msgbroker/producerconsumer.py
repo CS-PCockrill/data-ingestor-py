@@ -281,7 +281,7 @@ class FileProducer(Producer):
 
 class SQLConsumer(Consumer):
 
-    def __init__(self, logger, producer, connection_manager, key_column_mapping, batch_size=100):
+    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping, batch_size=100):
         """
         Initializes the SQLConsumer.
 
@@ -293,6 +293,7 @@ class SQLConsumer(Consumer):
         """
         super().__init__(producer)
         self.logger = logger
+        self.table_name = table_name
         self.connection_manager = connection_manager
         self.key_column_mapping = key_column_mapping
         self.batch_size = batch_size
@@ -405,7 +406,7 @@ class SQLConsumer(Consumer):
             with self.conn.cursor() as cur:
                 columns = self.batch[0].keys()
                 query = 'INSERT INTO {} ({}) VALUES %s'.format(
-                    self.producer.artifact_name,
+                    self.table_name,
                     ', '.join('"{}"'.format(col.lower()) for col in columns)
                 )
                 values = [[record[col] for col in columns] for record in self.batch]

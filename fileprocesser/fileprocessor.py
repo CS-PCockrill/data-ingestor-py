@@ -528,6 +528,7 @@ class FileProcessor:
 
                 consumer = SQLConsumer(
                     logger=self.logger,
+                    table_name=self.table_name,
                     producer=file_producer,
                     connection_manager=self.connection_manager,
                     key_column_mapping=schema,
