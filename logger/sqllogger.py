@@ -130,7 +130,7 @@ class SQLLogger:
             else:
                 # Construct parameters and execute update
                 update_parameters = self._build_update_parameters(
-                    symbol, severity, message, current_time, **kwargs, job_id=job_id
+                    symbol, severity, message, current_time, **kwargs
                 )
                 logging.debug(f"Updating job with parameters: {update_parameters}")
                 self._update_job(update_parameters)
