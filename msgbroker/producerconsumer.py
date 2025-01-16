@@ -6,6 +6,9 @@ import xml.etree.ElementTree as ET
 
 
 class Producer(ABC):
+    def __init__(self):
+        self.artifact_name = None  # Common field for all producers
+
     @abstractmethod
     def produce(self, message):
         pass
@@ -47,6 +50,7 @@ class FileProducer(Producer):
         self.file_path = file_path
         self.file_type = file_type
         self.schema_tag = schema_tag
+        self.artifact_name = file_path.split('/')[-1]
 
     def produce_from_source(self):
         """
@@ -257,6 +261,7 @@ class QueueConsumer(Consumer):
     """
     def __init__(self, producer):
         self.queue = producer.queue
+        self.artifact_name = producer.artifact_name  # Inherit artifact name from the producer
 
     def consume(self):
         """

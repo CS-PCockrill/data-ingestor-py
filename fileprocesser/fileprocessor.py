@@ -468,9 +468,10 @@ class FileProcessor:
                     # Instantiate the consumer for each worker
                     consumer_instance = consumer_cls(producer)
 
+                    # consumer, key_column_mapping, artifact_name, worker_id, conn
                     consumer_thread = Thread(
                         target=self._consume_and_insert,
-                        args=(consumer_instance, key_column_mapping, worker_name, conn),
+                        args=(consumer_instance, key_column_mapping, producer.artifact_name, worker_name, conn),
                     )
                     consumer_thread.start()
                     consumers.append(consumer_thread)
