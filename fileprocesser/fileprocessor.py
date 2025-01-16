@@ -1,15 +1,8 @@
 import os
-import json
 import logging
-import xml.etree.ElementTree as ET
-from psycopg2.extras import execute_values
-from queue import Queue
 from threading import Thread, Lock, Event
 from prometheus_client import generate_latest, Counter, Histogram, Summary
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-from msgbroker.producerconsumer import FileProducer, QueueConsumer, SQLConsumer
-
+from msgbroker.producerconsumer import FileProducer, SQLConsumer
 
 class FileProcessor:
     # Prometheus metrics definitions
