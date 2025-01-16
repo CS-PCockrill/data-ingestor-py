@@ -412,7 +412,7 @@ class FileProcessor:
                     producer.produce_from_source()  # The producer generates and queues records
                 except Exception as e:
                     logging.error(f"Producer encountered an error: {e}")
-                    self.METRICS["errors"].inc()
+                    METRICS["errors"].inc()
                     raise
                 finally:
                     # Signal the end of production
@@ -427,7 +427,7 @@ class FileProcessor:
                     consumer.consume()  # The consumer processes records from the producer
                 except Exception as e:
                     logging.error(f"Consumer encountered an error: {e}")
-                    self.METRICS["errors"].inc()
+                    METRICS["errors"].inc()
                     raise
                 finally:
                     consumer.finalize()  # Finalize consumer after consumption
@@ -444,7 +444,7 @@ class FileProcessor:
             logging.info("Processing completed successfully.")
         except Exception as e:
             logging.error(f"Failed to process records: {e}")
-            self.METRICS["errors"].inc()
+            METRICS["errors"].inc()
             raise
         finally:
             producer.close()  # Ensure producer resources are released
@@ -514,7 +514,7 @@ class FileProcessor:
                 schema, tag_name = self._get_schema_and_tag(file_type)
             except ValueError as e:
                 logging.error(f"Error determining schema and tag for file {file_path}: {e}")
-                self.METRICS["errors"].inc()
+                METRICS["errors"].inc()
                 continue
 
             # Log the start of processing for the file
@@ -542,7 +542,7 @@ class FileProcessor:
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:
                 logging.error(f"File processing failed for {file_path}: {e}")
-                self.METRICS["errors"].inc()
+                METRICS["errors"].inc()
 
     def _move_file_to_folder(self, file_path, folder_path):
         import shutil
