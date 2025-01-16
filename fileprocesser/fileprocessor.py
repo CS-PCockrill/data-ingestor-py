@@ -8,6 +8,8 @@ from threading import Thread, Lock, Event
 from prometheus_client import generate_latest, Counter, Histogram, Summary
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from msgbroker.producerconsumer import QueueProducer, QueueConsumer
+
 
 class FileProcessor:
     # Prometheus metrics definitions
@@ -369,12 +371,12 @@ class FileProcessor:
             self.METRICS["errors"].inc()
             raise
 
-    def _consume_and_insert(self, queue, key_column_mapping, artifact_name, worker_id, conn):
+    def _consume_and_insert(self, consumer, key_column_mapping, artifact_name, worker_id, conn):
         """
         Consumes records from the queue, transforms them, and inserts them into the database.
 
         Args:
-            queue (queue.Queue): Queue containing records to process.
+            consumer (Consumer): Consumer instance to fetch records.
             key_column_mapping (dict): Mapping of JSON keys to database column names.
             artifact_name (str): Artifact name for logging.
             worker_id (str): Unique identifier for the worker.
@@ -387,15 +389,13 @@ class FileProcessor:
         batch = []
         try:
             while True:
-                record = queue.get()
+                record = consumer.consume()
                 if record is None:
-                    # Signal the end of the queue
-                    queue.task_done()
+                    # Signal the end of consumption
                     break
 
                 # Transform and add the record to the batch
                 batch.append(self._transform_record(record, key_column_mapping))
-                queue.task_done()
 
                 # Perform batch insert when batch size is met
                 if len(batch) >= self.batch_size:
@@ -416,48 +416,46 @@ class FileProcessor:
 
             # Increment error metrics
             self.METRICS["errors"].inc()
-        finally:
-            # Signal the consumer completion
-            queue.put(None)
 
     @METRICS["file_processing_time"].time()  # Track total file processing time
-    def _process(self, file_path, file_type, schema_tag, key_column_mapping):
+    def _process(self, producer, consumer_cls=None, key_column_mapping=None):
         """
-        Processes a file, transforming and inserting its records using worker threads.
+        Processes records using producer and consumer components.
 
         Args:
-            file_path (str): Path to the input file.
-            file_type (str): File type ('json' or 'xml').
-            schema_tag (str): Schema tag to extract records.
+            producer (Producer): The producer instance for the message queue.
+            consumer_cls (type): The consumer class to use.
             key_column_mapping (dict): Mapping of JSON keys to database column names.
 
         Behavior:
-            - Uses a producer-consumer model to parallelize processing.
-            - Records metrics for records read, processed, and errors encountered.
+            - Uses the provided producer to generate records.
+            - Uses the provided consumer class to process records.
         """
-        queue = Queue(maxsize=100)
+        if not consumer_cls:
+            # Use default QueueConsumer if no class provided
+            consumer_cls = QueueConsumer
+
+        consumer = consumer_cls(producer)  # Instantiate consumer with the producer
         all_workers_done = Event()
 
         # Initialize worker states
         self.worker_states = {}
 
         try:
-            # Start the producer thread
+            # Start the producer
             def producer_task():
                 try:
-                    for record in self._process_file(file_path, schema_tag, file_type):
-                        queue.put(record)
-                        self.METRICS["records_read"].inc()  # Increment records read
+                    producer.produce_from_source()  # Producer handles its own source logic
                 except Exception as e:
-                    logging.error(f"Producer encountered an error while reading file {file_path}: {e}")
+                    logging.error(f"Producer encountered an error: {e}")
                     self.METRICS["errors"].inc()
                     raise
                 finally:
                     # Signal the end of production
                     all_workers_done.set()
 
-            producer = Thread(target=producer_task)
-            producer.start()
+            producer_thread = Thread(target=producer_task)
+            producer_thread.start()
 
             # Start consumer workers
             consumers = []
@@ -467,28 +465,31 @@ class FileProcessor:
                     worker_name = f"worker_{worker_id}"
                     self.worker_states[worker_name] = {"conn": conn, "error": False}
 
-                    consumer = Thread(
+                    # Instantiate the consumer for each worker
+                    consumer_instance = consumer_cls(producer)
+
+                    consumer_thread = Thread(
                         target=self._consume_and_insert,
-                        args=(queue, key_column_mapping, file_path, worker_name, conn),
+                        args=(consumer_instance, key_column_mapping, worker_name, conn),
                     )
-                    consumer.start()
-                    consumers.append(consumer)
+                    consumer_thread.start()
+                    consumers.append(consumer_thread)
             except Exception as e:
-                logging.error(f"Failed to initialize consumers for file {file_path}: {e}")
+                logging.error(f"Failed to initialize consumers: {e}")
                 self.METRICS["errors"].inc()
                 raise
 
             # Wait for producer to finish
-            producer.join()
+            producer_thread.join()
 
             # Signal the end of records for workers
             all_workers_done.wait()
             for _ in range(len(consumers)):
-                queue.put(None)
+                consumer.signal_done()
 
             # Wait for all consumers to finish
-            for consumer in consumers:
-                consumer.join()
+            for consumer_thread in consumers:
+                consumer_thread.join()
 
             # Finalize transactions
             all_committed = True
@@ -501,7 +502,7 @@ class FileProcessor:
                         state["conn"].commit()
                     state["conn"].close()
             except Exception as e:
-                logging.error(f"Error during transaction finalization for file {file_path}: {e}")
+                logging.error(f"Error during transaction finalization: {e}")
                 self.METRICS["errors"].inc()
                 raise
 
@@ -511,15 +512,11 @@ class FileProcessor:
             else:
                 logging.info("2PC: All transactions committed successfully.")
         except Exception as e:
-            logging.error(f"Failed to process file {file_path}: {e}")
+            logging.error(f"Failed to process records: {e}")
             self.METRICS["errors"].inc()
             raise
         finally:
-            # Ensure the queue is empty and release any resources
-            while not queue.empty():
-                queue.get()
-                queue.task_done()
-
+            producer.close()
 
     def _get_schema_and_tag(self, file_type):
         """
@@ -564,12 +561,13 @@ class FileProcessor:
         transformed_record["processed"] = False
         return transformed_record
 
-    def process_files(self, files):
+    def process_files(self, files, producer=None):
         """
         Process a list of files dynamically based on their file types.
 
         Args:
             files (list): List of file paths to process.
+            producer (Producer): Optional producer for message queue.
 
         Behavior:
             - Determines the file type (JSON or XML) based on the file extension.
@@ -593,7 +591,10 @@ class FileProcessor:
 
             # Process the file using the determined schema and tag and move to the output directory after successful processing
             try:
-                self._process(file_path, file_type, tag_name, schema)
+                # File-based processing
+                producer = QueueProducer(maxsize=1000)
+                producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
+                self._process(producer=producer, key_column_mapping=schema)
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:
                 logging.error(f"File processing failed for {file_path}: {e}")
