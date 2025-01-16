@@ -43,6 +43,39 @@ class SQLLogger:
         self.error_resolver = ErrorResolver(self.conn, context.error_table)
         self.fallback_logger = setup_fallback_logger()
 
+    # Helper to build parameters for insertion
+    def _build_insert_parameters(self, symbol, severity, message, current_time, host_name, **kwargs):
+        return (
+            kwargs.get("job_name", "Job"),
+            kwargs.get("job_type", self.context.interface_type),
+            symbol,
+            severity,
+            "IN PROGRESS",
+            current_time,
+            message,
+            kwargs.get("error_message"),
+            kwargs.get("query"),
+            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
+            kwargs.get("artifact_name"),
+            self.context.user_id,
+            host_name,
+            self.context.table_name,
+        )
+
+    # Helper to build parameters for updates
+    def _build_update_parameters(self, symbol, severity, message, current_time, **kwargs):
+        return (
+            "SUCCESS" if kwargs.get("success") else "FAILURE",
+            current_time,
+            message,
+            kwargs.get("error_message"),
+            kwargs.get("query"),
+            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
+            self.context.user_id,
+            self.context.table_name,
+            kwargs.get("job_id"),
+        )
+
     def _execute_query(self, query, parameters):
         """
         Helper method to execute a query with a local cursor.
@@ -86,34 +119,22 @@ class SQLLogger:
             host_name = socket.gethostname()
 
             job_id = kwargs.get("job_id")
-            parameters = (
-                kwargs.get("job_name", "Job"),
-                kwargs.get("job_type", self.context.interface_type),
-                symbol,
-                severity,
-                "IN PROGRESS" if job_id is None else ("SUCCESS" if kwargs.get("success") else "FAILURE"),
-                current_time,
-                message,
-                kwargs.get("error_message"),
-                kwargs.get("query"),
-                json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
-                kwargs.get("artifact_name"),
-                self.context.user_id,
-                host_name,
-                self.context.table_name,
-            )
 
             if job_id is None:
-                # Debug logs for insert operation
-                logging.debug(f"Inserting job with parameters: {parameters}")
-                job_id = self._insert_job(parameters)
+                # Construct parameters and execute insert
+                insert_parameters = self._build_insert_parameters(
+                    symbol, severity, message, current_time, host_name, **kwargs
+                )
+                logging.debug(f"Inserting job with parameters: {insert_parameters}")
+                job_id = self._insert_job(insert_parameters)
             else:
-                # Debug logs for update operation
-                update_parameters = parameters + (job_id,)
+                # Construct parameters and execute update
+                update_parameters = self._build_update_parameters(
+                    symbol, severity, message, current_time, **kwargs, job_id=job_id
+                )
                 logging.debug(f"Updating job with parameters: {update_parameters}")
                 self._update_job(update_parameters)
 
-            # Increment success counter
             LOG_DB_WRITE_SUCCESS.inc()
             return job_id
         except Exception as e:
