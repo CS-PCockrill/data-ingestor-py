@@ -6,7 +6,7 @@ import logging
 from config.config import INTERFACE_IDS
 
 from fileprocesser.fileprocessor import FileProcessor
-from helpers import move_file_to_folder, load_json_mapping
+from helpers import load_json_mapping
 from logger.sqllogger import SQLLogger, LoggerContext
 from db.connectionmanager import DBConnectionManager
 
