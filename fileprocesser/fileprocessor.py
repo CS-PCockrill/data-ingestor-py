@@ -441,60 +441,85 @@ class FileProcessor:
         # Initialize worker states
         self.worker_states = {}
 
-        # Start the producer thread
-        def producer_task():
+        try:
+            # Start the producer thread
+            def producer_task():
+                try:
+                    for record in self._process_file(file_path, schema_tag, file_type):
+                        queue.put(record)
+                        self.METRICS["records_read"].inc()  # Increment records read
+                except Exception as e:
+                    logging.error(f"Producer encountered an error while reading file {file_path}: {e}")
+                    self.METRICS["errors"].inc()
+                    raise
+                finally:
+                    # Signal the end of production
+                    all_workers_done.set()
+
+            producer = Thread(target=producer_task)
+            producer.start()
+
+            # Start consumer workers
+            consumers = []
             try:
-                for record in self._process_file(file_path, schema_tag, file_type):
-                    queue.put(record)
-                    self.METRICS["records_read"].inc()  # Increment records read
-            finally:
-                # Signal the end of production
-                all_workers_done.set()
+                for worker_id in range(self.config["numWorkers"]):
+                    conn = self.connection_manager.connect()
+                    worker_name = f"worker_{worker_id}"
+                    self.worker_states[worker_name] = {"conn": conn, "error": False}
 
-        producer = Thread(target=producer_task)
-        producer.start()
+                    consumer = Thread(
+                        target=self._consume_and_insert,
+                        args=(queue, key_column_mapping, file_path, worker_name, conn),
+                    )
+                    consumer.start()
+                    consumers.append(consumer)
+            except Exception as e:
+                logging.error(f"Failed to initialize consumers for file {file_path}: {e}")
+                self.METRICS["errors"].inc()
+                raise
 
-        # Start consumer workers
-        consumers = []
-        for worker_id in range(self.config["numWorkers"]):
-            conn = self.connection_manager.connect()
-            worker_name = f"worker_{worker_id}"
-            self.worker_states[worker_name] = {"conn": conn, "error": False}
+            # Wait for producer to finish
+            producer.join()
 
-            consumer = Thread(
-                target=self._consume_and_insert,
-                args=(queue, key_column_mapping, file_path, worker_name, conn),
-            )
-            consumer.start()
-            consumers.append(consumer)
+            # Signal the end of records for workers
+            all_workers_done.wait()
+            for _ in range(len(consumers)):
+                queue.put(None)
 
-        # Wait for producer to finish
-        producer.join()
+            # Wait for all consumers to finish
+            for consumer in consumers:
+                consumer.join()
 
-        # Signal the end of records for workers
-        all_workers_done.wait()
-        for _ in range(len(consumers)):
-            queue.put(None)
+            # Finalize transactions
+            all_committed = True
+            try:
+                for state in self.worker_states.values():
+                    if state["error"]:
+                        all_committed = False
+                        state["conn"].rollback()
+                    else:
+                        state["conn"].commit()
+                    state["conn"].close()
+            except Exception as e:
+                logging.error(f"Error during transaction finalization for file {file_path}: {e}")
+                self.METRICS["errors"].inc()
+                raise
 
-        # Wait for all consumers to finish
-        for consumer in consumers:
-            consumer.join()
-
-        # Finalize transactions
-        all_committed = True
-        for state in self.worker_states.values():
-            if state["error"]:
-                all_committed = False
-                state["conn"].rollback()
+            if not all_committed:
+                logging.error("2PC: Transaction rollback due to errors.")
+                self.METRICS["errors"].inc()
             else:
-                state["conn"].commit()
-            state["conn"].close()
-
-        if not all_committed:
-            logging.error("2PC: Transaction rollback due to errors.")
+                logging.info("2PC: All transactions committed successfully.")
+        except Exception as e:
+            logging.error(f"Failed to process file {file_path}: {e}")
             self.METRICS["errors"].inc()
-        else:
-            logging.info("2PC: All transactions committed successfully.")
+            raise
+        finally:
+            # Ensure the queue is empty and release any resources
+            while not queue.empty():
+                queue.get()
+                queue.task_done()
+
 
     def _get_schema_and_tag(self, file_type):
         """
@@ -556,13 +581,43 @@ class FileProcessor:
             file_type = "json" if file_path.endswith(".json") else "xml"
 
             # Retrieve the appropriate schema and tag name
-            schema, tag_name = self._get_schema_and_tag(file_type)
+            try:
+                schema, tag_name = self._get_schema_and_tag(file_type)
+            except ValueError as e:
+                logging.error(f"Error determining schema and tag for file {file_path}: {e}")
+                self.METRICS["errors"].inc()
+                continue
 
             # Log the start of processing for the file
             logging.info(f"Processing file {file_path} as {file_type}.")
 
-            # Process the file using the determined schema and tag
-            self._process(file_path, file_type, tag_name, schema)
+            # Process the file using the determined schema and tag and move to the output directory after successful processing
+            try:
+                self._process(file_path, file_type, tag_name, schema)
+                self._move_file_to_folder(file_path, self.config["outputDirectory"])
+            except Exception as e:
+                logging.error(f"File processing failed for {file_path}: {e}")
+                self.METRICS["errors"].inc()
+
+    def _move_file_to_folder(self, file_path, folder_path):
+        import shutil
+
+        try:
+            # Ensure the directory exists
+            os.makedirs(folder_path, exist_ok=True)
+
+            # Construct the destination path
+            destination_path = os.path.join(folder_path, os.path.basename(file_path))
+
+            # If the file already exists at the destination, overwrite it
+            if os.path.exists(destination_path):
+                os.replace(file_path, destination_path)
+                logging.info(f"File overwritten at: {destination_path}")
+            else:
+                shutil.move(file_path, destination_path)
+                logging.info(f"File moved to: {destination_path}")
+        except Exception as e:
+            logging.error(f"Failed to move or overwrite file {file_path} to {folder_path}: {e}")
 
     def close(self):
         """

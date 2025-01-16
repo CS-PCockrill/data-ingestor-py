@@ -4,7 +4,6 @@ import os.path
 import logging
 # INTERFACE_IDS is a key value list of interface IDs to their respective control config file path
 from config.config import INTERFACE_IDS
-import pandas as pd
 
 from fileprocesser.fileprocessor import FileProcessor
 from helpers import move_file_to_folder, load_json_mapping
@@ -19,35 +18,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-
-def write_records_to_csv(records, output_file_path):
-    """
-    Write transformed records to a CSV file using Pandas.
-
-    Args:
-        records (list[dict]): List of dictionaries containing the data to write.
-        output_file_path (str): Path to the output CSV file.
-    """
-    if not records:
-        # Log a warning if no records are available
-        logging.warning("No records to write to CSV.")
-        return
-
-    try:
-        # Ensure the output directory exists
-        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
-
-        # Convert records to a Pandas DataFrame
-        df = pd.DataFrame(records)
-
-        # Write DataFrame to a CSV file
-        df.to_csv(output_file_path, index=False, sep='|', encoding='utf-8')
-        logging.info(f"CSV file successfully written to: {output_file_path}")
-    except Exception as e:
-        # Handle errors during file writing
-        logging.error(f"Failed to write CSV file: {e}")
-        raise
-
 
 if __name__ == "__main__":
     # Parse command-line arguments for input file and interface ID

@@ -1,6 +1,7 @@
 import logging
 import os
 import json
+import pandas as pd
 
 def load_json_mapping(file_path):
     """Load key-value mapping from a JSON file into a dictionary."""
@@ -16,23 +17,32 @@ def load_json_mapping(file_path):
         logging.error(f"Error parsing JSON mapping file at {file_path}: {e}")
         raise
 
+def write_records_to_csv(records, output_file_path):
+    """
+    Write transformed records to a CSV file using Pandas.
 
-def move_file_to_folder(file_path, folder_path):
-    import shutil
+    Args:
+        records (list[dict]): List of dictionaries containing the data to write.
+        output_file_path (str): Path to the output CSV file.
+    """
+    if not records:
+        # Log a warning if no records are available
+        logging.warning("No records to write to CSV.")
+        return
 
     try:
-        # Ensure the directory exists
-        os.makedirs(folder_path, exist_ok=True)
+        # Ensure the output directory exists
+        os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
 
-        # Construct the destination path
-        destination_path = os.path.join(folder_path, os.path.basename(file_path))
+        # Convert records to a Pandas DataFrame
+        df = pd.DataFrame(records)
 
-        # If the file already exists at the destination, overwrite it
-        if os.path.exists(destination_path):
-            os.replace(file_path, destination_path)
-            logging.info(f"File overwritten at: {destination_path}")
-        else:
-            shutil.move(file_path, destination_path)
-            logging.info(f"File moved to: {destination_path}")
+        # Write DataFrame to a CSV file
+        df.to_csv(output_file_path, index=False, sep='|', encoding='utf-8')
+        logging.info(f"CSV file successfully written to: {output_file_path}")
     except Exception as e:
-        logging.error(f"Failed to move or overwrite file {file_path} to {folder_path}: {e}")
+        # Handle errors during file writing
+        logging.error(f"Failed to write CSV file: {e}")
+        raise
+
+
