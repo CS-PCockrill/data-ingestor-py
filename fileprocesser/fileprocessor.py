@@ -535,7 +535,7 @@ class FileProcessor:
                 )
 
                 # Invoke the processing pipeline
-                self._process(producer=producer, consumer=consumer, key_column_mapping=schema)
+                self._process(producer=file_producer, consumer=consumer, key_column_mapping=schema)
 
                 # sql_consumer = SQLConsumer(producer, self.connection_manager, key_column_mapping)
                 # self._process(producer=file_producer, consumer_cls=SQLConsumer, key_column_mapping=schema)
