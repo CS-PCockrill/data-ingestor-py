@@ -346,5 +346,5 @@ class FileProcessor:
         """
         Close the database connection and release resources.
         """
-        # self.conn.close()
+        self.conn.close()
         logging.info("Database connection closed.")
