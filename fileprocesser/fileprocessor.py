@@ -296,7 +296,7 @@ class FileProcessor:
         # Wait for all workers to finish
         for state in self.worker_states.values():
             state["conn"].commit() if not state["error"] else state["conn"].rollback()
-            state["conn"].close()
+            # state["conn"].close()
 
         # Log final status
         if any(state["error"] for state in self.worker_states.values()):
