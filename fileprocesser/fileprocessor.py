@@ -280,7 +280,7 @@ class FileProcessor:
 
         # Start consumer workers
         for worker_id in range(self.config["numWorkers"]):
-            conn = self.connection_manager.connect()
+            conn = self.connection_manager.connect()  # Create a new connection for each worker
             worker_name = f"worker_{worker_id}"
             self.worker_states[worker_name] = {"conn": conn, "error": False}
 
@@ -296,7 +296,7 @@ class FileProcessor:
         # Wait for all workers to finish
         for state in self.worker_states.values():
             state["conn"].commit() if not state["error"] else state["conn"].rollback()
-            # state["conn"].close()
+            state["conn"].close()
 
         # Log final status
         if any(state["error"] for state in self.worker_states.values()):
