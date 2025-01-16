@@ -528,7 +528,7 @@ class FileProcessor:
 
                 consumer = SQLConsumer(
                     logger=self.logger,
-                    producer=producer,
+                    producer=file_producer,
                     connection_manager=self.connection_manager,
                     key_column_mapping=schema,
                     batch_size=100
