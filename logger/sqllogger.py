@@ -104,15 +104,27 @@ class SQLLogger:
             )
 
             if job_id is None:
+                # Debug logs for insert operation
+                logging.debug(f"Inserting job with parameters: {parameters}")
                 job_id = self._insert_job(parameters)
             else:
-                self._update_job(parameters + (job_id,))
+                # Debug logs for update operation
+                update_parameters = parameters + (job_id,)
+                logging.debug(f"Updating job with parameters: {update_parameters}")
+                self._update_job(update_parameters)
 
-            LOG_DB_WRITE_SUCCESS.inc()  # Increment success counter
+            # Increment success counter
+            LOG_DB_WRITE_SUCCESS.inc()
             return job_id
         except Exception as e:
-            LOG_DB_WRITE_FAILURE.inc()  # Increment failure counter
+            # Increment failure counter
+            LOG_DB_WRITE_FAILURE.inc()
+
+            # Log detailed error information
             logging.error(f"Logging job failed: {e}")
+            logging.debug(f"Symbol: {symbol}, Parameters: {kwargs}")
+
+            # Fallback logging for additional error context
             self._fallback_log(symbol, str(e), kwargs)
 
     def _format_log_entry(self, **kwargs):
