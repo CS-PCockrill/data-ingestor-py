@@ -1,9 +1,21 @@
 import logging
 import datetime
-import psycopg2
-import cx_Oracle
 import json
 import socket
+from errors.errorresolver import ErrorResolver
+
+class QueryBuilder:
+    def __init__(self, table_name):
+        self.table_name = table_name
+
+    def build_insert_query(self, columns):
+        column_list = ", ".join(columns)
+        placeholders = ", ".join(["%s"] * len(columns))
+        return f"INSERT INTO {self.table_name} ({column_list}) VALUES ({placeholders}) RETURNING id"
+
+    def build_update_query(self, columns, condition="id = %s"):
+        set_clause = ", ".join([f"{col} = %s" for col in columns])
+        return f"UPDATE {self.table_name} SET {set_clause} WHERE {condition}"
 
 class LoggerContext:
     def __init__(self, interface_type, user_id, table_name, error_table_name):
@@ -14,144 +26,67 @@ class LoggerContext:
 
 
 class SQLLogger:
-    def __init__(self, db_config, context):
-        self.db_config = db_config
-        self.context = context
-        self.conn = self._connect()
+    def __init__(self, connection_manager, context):
+        self.connection_manager = connection_manager
+        self.conn = self.connection_manager.connect()
         self.cursor = self.conn.cursor()
+        self.context = context
+        self.query_builder = QueryBuilder("ss_logs")
+        self.error_resolver = ErrorResolver(self.cursor, context.error_table)
 
-    def _connect(self):
+    def _insert_job(self, parameters):
+        insert_query = self.query_builder.build_insert_query([
+            "job_name", "job_type", "symb", "severity", "status", "start_time",
+            "message", "error_message", "query", "values", "artifact_name",
+            "user_id", "host_name", "table_name"
+        ])
         try:
-            conn = psycopg2.connect(
-                host=self.db_config["host"],
-                port=self.db_config["port"],
-                database=self.db_config["database"],
-                user=self.db_config["user"],
-                password=self.db_config["password"],
-            )
-            logging.info("Successfully connected to PostgreSQL.")
-            return conn
+            self.cursor.execute(insert_query, parameters)
+            job_id = self.cursor.fetchone()[0]
+            self.conn.commit()
+            return job_id
         except Exception as e:
-            logging.error(f"Failed to connect to database: {e}")
+            logging.error(f"Failed to insert job: {e}")
             raise
 
-    def log_job(
-            self,
-            *args,
-            symbol,
-            job_id=None,
-            job_name="Job",
-            job_type=None,
-            query=None,
-            values=None,
-            artifact_name=None,
-            success=None,
-            error_message=None,
-    ):
-        """
-        Log a job to the database. Inserts a new job if `job_id` is None, otherwise updates the existing job.
+    def _update_job(self, parameters):
+        update_query = self.query_builder.build_update_query([
+            "status", "end_time", "message", "error_message",
+            "query", "values", "user_id", "table_name"
+        ])
+        try:
+            self.cursor.execute(update_query, parameters)
+            self.conn.commit()
+        except Exception as e:
+            logging.error(f"Failed to update job: {e}")
+            raise
 
-        Args:
-            *args: Additional arguments for error message formatting.
-            symbol (str): Error symbol/code.
-            job_id (int): ID of the job to update (None for new jobs).
-            job_name (str): Name of the job.
-            job_type (str): Type/category of the job.
-            query (str): SQL query associated with the job.
-            values (list or dict): Values for the query.
-            artifact_name (str): Name of the artifact being processed.
-            success (bool): Job success status (True/False).
-            error_message (str): Error details if any.
-
-        Returns:
-            int: ID of the logged or updated job.
-        """
+    def log_job(self, *args, symbol, **kwargs):
+        severity, message = self.error_resolver.resolve(symbol, *args)
         current_time = datetime.datetime.now(datetime.timezone.utc)
         host_name = socket.gethostname()
 
-        # Resolve severity and message using the provided symbol and arguments
-        severity, message = self._resolve_error(symbol, *args)
-
+        job_id = kwargs.get("job_id")
+        parameters = (
+            kwargs.get("job_name", "Job"),
+            kwargs.get("job_type", self.context.interface_type),
+            symbol,
+            severity,
+            "IN PROGRESS" if job_id is None else ("SUCCESS" if kwargs.get("success") else "FAILURE"),
+            current_time,
+            message,
+            kwargs.get("error_message"),
+            kwargs.get("query"),
+            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
+            kwargs.get("artifact_name"),
+            self.context.user_id,
+            host_name,
+            self.context.table_name,
+        )
         if job_id is None:
-            # Insert a new job log
-            insert_query = """
-            INSERT INTO ss_logs (
-                job_name, job_type, symb, severity, status, start_time, message,
-                error_message, query, values, artifact_name, user_id, host_name, table_name
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
-            """
-            parameters = (
-                job_name,
-                job_type or self.context.interface_type,
-                symbol,
-                severity,
-                "IN PROGRESS",
-                current_time,
-                message,
-                error_message,
-                query,
-                json.dumps(values) if values else None,
-                artifact_name,
-                self.context.user_id,
-                host_name,
-                self.context.table_name,
-            )
-            try:
-                logging.debug(f"Executing query: {insert_query}")
-                logging.debug(f"Parameters: {parameters}")
-                self.cursor.execute(insert_query, parameters)
-                job_id = self.cursor.fetchone()[0]
-                self.conn.commit()
-                logging.info(f"Job logged with ID {job_id}: {message}")
-                return job_id
-            except Exception as e:
-                logging.error(f"Failed to log job: {e}")
-                raise
+            return self._insert_job(parameters)
         else:
-            # Update an existing job log
-            update_query = """
-            UPDATE ss_logs
-            SET status = %s, end_time = %s, message = %s, error_message = %s, query = %s, values = %s, 
-                user_id = %s, table_name = %s
-            WHERE id = %s
-            """
-            status = "SUCCESS" if success else "FAILURE"
-            parameters = (
-                status,
-                current_time,
-                message,
-                error_message,
-                query,
-                json.dumps(values) if values else None,
-                self.context.user_id,
-                self.context.table_name,
-                job_id,
-            )
-            try:
-                logging.debug(f"Executing query: {update_query}")
-                logging.debug(f"Parameters: {parameters}")
-                self.cursor.execute(update_query, parameters)
-                self.conn.commit()
-                logging.info(f"Job ID {job_id} updated to {status}: {message}")
-            except Exception as e:
-                logging.error(f"Failed to update job log with ID {job_id}: {e}")
-                raise
-
-    def _resolve_error(self, symbol, *args):
-        query = f"SELECT svrt, dscr FROM {self.context.error_table} WHERE symb = %s"
-        try:
-            self.cursor.execute(query, (symbol,))
-            result = self.cursor.fetchone()
-            if result:
-                severity, description = result
-                return severity, description.format(*args)
-            else:
-                logging.warning(f"Error symbol '{symbol}' not found.")
-                return "W", f"Unknown error: {symbol}"
-        except Exception as e:
-            logging.error(f"Failed to resolve error definition for '{symbol}': {e}")
-            raise
+            self._update_job(parameters + (job_id,))
 
     def close(self):
         if self.cursor:

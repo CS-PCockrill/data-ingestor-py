@@ -36,7 +36,8 @@ CREATE TABLE ss_logs (
     table_name VARCHAR(50),
     artifact_name VARCHAR(255),         -- Name of the artifact being processed
     user_id VARCHAR(255),               -- ID of the user who initiated the job
-    host_name VARCHAR(255)              -- Hostname of the machine running the job
+    host_name VARCHAR(255),              -- Hostname of the machine running the job
+    duration INTERVAL GENERATED ALWAYS AS (end_time - start_time) STORED;
 );
 
 
