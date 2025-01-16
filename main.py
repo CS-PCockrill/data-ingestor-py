@@ -76,9 +76,9 @@ if __name__ == "__main__":
         logging.error(f"No .json or .xml files found in {config['inputDirectory']}.")
         raise ValueError(f"No files to process in {config['inputDirectory']}.")
 
-    # connection_manager = DBConnectionManager(config)
-    logger = SQLLogger(DBConnectionManager(config), context=LoggerContext(config['interfaceType'], config['user'], config['tableName'], config['errorDefinitionSourceLocation'], config['logsTableName']))
-    processor = FileProcessor(DBConnectionManager(config), logger, config)
+    connection_manager = DBConnectionManager(config)
+    logger = SQLLogger(connection_manager, context=LoggerContext(config['interfaceType'], config['user'], config['tableName'], config['errorDefinitionSourceLocation'], config['logsTableName']))
+    processor = FileProcessor(connection_manager, logger, config)
 
     processor.process_files(files)
 

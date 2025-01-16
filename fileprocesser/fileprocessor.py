@@ -3,7 +3,7 @@ import logging
 import xml.etree.ElementTree as ET
 from psycopg2.extras import execute_values
 from queue import Queue
-from threading import Thread
+from threading import Thread, Lock
 from prometheus_client import Counter, Histogram
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -13,8 +13,6 @@ FILE_DB_WRITE_FAILURE = Counter("file_processor_write_failure", "Number of faile
 FILE_PROCESSING_TIME = Histogram("file_processing_time_seconds", "Time taken to process files")
 
 class FileProcessor:
-    worker_states = {}
-
     def __init__(self, connection_manager, logger, config):
         """
         Initialize the FileProcessor.
@@ -29,6 +27,8 @@ class FileProcessor:
         self.conn = self.connection_manager.connect()
         self.table_name = config["tableName"]
         self.batch_size = config["sqlBatchSize"]
+        self.worker_states = {}
+        self.state_lock = Lock()  # Protect shared worker_states
 
 
     def _flatten_dict(self, data):
@@ -185,9 +185,6 @@ class FileProcessor:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _batch_insert_records(self, records, artifact_name, conn):
-        """
-        Perform a batch insert using the specified connection.
-        """
         if not records:
             self.logger.log_job(
                 symbol="GS2001W",
@@ -259,15 +256,21 @@ class FileProcessor:
                 self._batch_insert_records(batch, artifact_name, conn)
 
             # Mark success
-            self.worker_states[worker_id]["error"] = False
+            with self.state_lock:
+                self.worker_states[worker_id]["error"] = False
         except Exception as e:
             logging.error(f"Worker {worker_id} encountered an error: {e}")
-            self.worker_states[worker_id]["error"] = True
+            with self.state_lock:
+                self.worker_states[worker_id]["error"] = True
         finally:
             queue.put(None)  # Signal completion
 
     def _process(self, file_path, file_type, schema_tag, key_column_mapping):
         queue = Queue(maxsize=100)
+
+        # Initialize worker states
+        with self.state_lock:
+            self.worker_states = {}
 
         # Start producer
         producer = Thread(
@@ -280,9 +283,10 @@ class FileProcessor:
 
         # Start consumer workers
         for worker_id in range(self.config["numWorkers"]):
-            conn = self.connection_manager.connect()  # Create a new connection for each worker
+            conn = self.connection_manager.connect()
             worker_name = f"worker_{worker_id}"
-            self.worker_states[worker_name] = {"conn": conn, "error": False}
+            with self.state_lock:
+                self.worker_states[worker_name] = {"conn": conn, "error": False}
 
             consumer = Thread(
                 target=self._consume_and_insert,
@@ -293,13 +297,17 @@ class FileProcessor:
         producer.join()
         queue.put(None)  # Signal end of records
 
-        # Wait for all workers to finish
+        # Wait for all workers to finish and finalize 2PC
+        all_committed = True
         for state in self.worker_states.values():
-            state["conn"].commit() if not state["error"] else state["conn"].rollback()
+            if state["error"]:
+                all_committed = False
+                state["conn"].rollback()
+            else:
+                state["conn"].commit()
             state["conn"].close()
 
-        # Log final status
-        if any(state["error"] for state in self.worker_states.values()):
+        if not all_committed:
             logging.error("2PC: Transaction rollback due to errors.")
         else:
             logging.info("2PC: All transactions committed successfully.")
