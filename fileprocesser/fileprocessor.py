@@ -8,7 +8,7 @@ from threading import Thread, Lock, Event
 from prometheus_client import generate_latest, Counter, Histogram, Summary
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from msgbroker.producerconsumer import QueueProducer, QueueConsumer
+from msgbroker.producerconsumer import FileProducer, QueueConsumer
 
 
 class FileProcessor:
@@ -76,191 +76,191 @@ class FileProcessor:
             logging.error(f"Failed to write metrics to file: {e}")
             raise
 
-    def _flatten_dict(self, data):
-        """
-        Flattens a nested dictionary and handles repeated elements as individual rows.
-
-        This is critical for processing hierarchical data structures into a normalized format
-        suitable for database operations.
-
-        Args:
-            data (dict): The nested dictionary to be flattened.
-
-        Returns:
-            list[dict]: A list of flattened dictionaries derived from the input data.
-
-        Example:
-            Input: {"key1": "value1", "key2": [{"subkey1": "value2"}, {"subkey1": "value3"}]}
-            Output: [{"key1": "value1", "subkey1": "value2"}, {"key1": "value1", "subkey1": "value3"}]
-        """
-        # Initialize the base record, containing non-nested key-value pairs
-        base_record = {}
-        # List to store records resulting from nested elements
-        nested_records = []
-
-        # Iterate over the dictionary items
-        for key, value in data.items():
-            if isinstance(value, list):
-                # If the value is a list, iterate through its elements
-                for nested in value:
-                    if isinstance(nested, dict):
-                        # Copy base record and merge with nested dictionary
-                        new_record = base_record.copy()
-                        new_record.update(nested)
-                        nested_records.append(new_record)
-            elif isinstance(value, dict):
-                # If the value is a dictionary, merge it with the base record
-                base_record.update(value)
-            else:
-                # Add scalar values to the base record
-                base_record[key] = value
-
-        # If no nested records exist, return the base record as a single-item list
-        if not nested_records:
-            logging.debug("No nested records found; returning base record.")
-            return [base_record]
-
-        # Update each nested record with values from the base record
-        for record in nested_records:
-            record.update(base_record)
-
-        logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
-        return nested_records
-
-    def _parse_json_file(self, file_path, schema_tag="Records"):
-        """
-        Parses and flattens JSON records from a file.
-
-        Args:
-            file_path (str): Path to the JSON file.
-            schema_tag (str): Key to extract records from the JSON structure (default: "Records").
-
-        Yields:
-            dict: Flattened records extracted from the JSON file.
-
-        Raises:
-            FileNotFoundError: If the JSON file is not found.
-            json.JSONDecodeError: If the JSON file contains invalid syntax.
-        """
-        try:
-            # Open and load the JSON file into a Python dictionary
-            with open(file_path, "r") as file:
-                data = json.load(file)
-                logging.info(f"Successfully loaded JSON file: {file_path}")
-        except FileNotFoundError:
-            # Log and re-raise error if the file is missing
-            logging.error(f"JSON file not found: {file_path}")
-            raise
-        except json.JSONDecodeError as e:
-            # Log and re-raise error for invalid JSON syntax
-            logging.error(f"Error parsing JSON file: {e}")
-            raise
-
-        # Extract records using the schema tag or fallback to the root of the JSON structure
-        records = data.get(schema_tag, data)
-
-        # Flatten and yield each record
-        if isinstance(records, list):
-            for record in records:
-                for flattened in self._flatten_dict(record):
-                    yield flattened
-        elif isinstance(records, dict):
-            for flattened in self._flatten_dict(records):
-                yield flattened
-
-    def _parse_xml_file(self, file_path, schema_tag="Record"):
-        """
-        Parses and flattens XML records from a file.
-
-        Args:
-            file_path (str): Path to the XML file.
-            schema_tag (str): Tag to extract records from the XML structure (default: "Record").
-
-        Yields:
-            dict: Flattened records extracted from the XML file.
-
-        Raises:
-            FileNotFoundError: If the XML file is not found.
-            ET.ParseError: If the XML file contains invalid syntax.
-        """
-        try:
-            # Parse the XML file and obtain the root element
-            tree = ET.parse(file_path)
-            root = tree.getroot()
-            logging.info(f"Successfully parsed XML file: {file_path}")
-        except FileNotFoundError:
-            # Log and re-raise error if the file is missing
-            logging.error(f"XML file not found: {file_path}")
-            raise
-        except ET.ParseError as e:
-            # Log and re-raise error for invalid XML syntax
-            logging.error(f"Error parsing XML file: {e}")
-            raise
-
-        def parse_element(element):
-            """
-            Recursively parses an XML element into a dictionary.
-
-            Args:
-                element (xml.etree.ElementTree.Element): The XML element to parse.
-
-            Returns:
-                dict: Parsed representation of the element.
-            """
-            record = {}
-            for child in element:
-                if len(child) > 0:
-                    # Handle nested elements by appending them to a list
-                    if child.tag not in record:
-                        record[child.tag] = []
-                    record[child.tag].append(parse_element(child))
-                else:
-                    # Add leaf node text to the record
-                    record[child.tag] = child.text.strip() if child.text else None
-            return record
-
-        # Extract and flatten records
-        for record_element in root.findall(f".//{schema_tag}"):
-            raw_record = parse_element(record_element)
-            flattened_records = self._flatten_dict(raw_record)
-            for record in flattened_records:
-                yield record
-
-    def _process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
-        """
-        Processes a file (JSON or XML), flattens records, and optionally queues them for processing.
-
-        Args:
-            file_path (str): Path to the input file.
-            schema_tag (str): The schema tag name for JSON/XML records.
-            file_type (str): File type, either 'json' or 'xml' (default: 'json').
-            output_queue (queue.Queue, optional): Queue to stream records for parallel processing.
-
-        Yields:
-            dict: Flattened records if `output_queue` is not specified.
-
-        Behavior:
-            - If `output_queue` is provided, records are pushed to the queue for consumption.
-            - If `output_queue` is None, records are yielded sequentially for single-threaded use.
-        """
-        # Select the appropriate parser based on the file type
-        parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
-
-        # Iterate through parsed records
-        for record in parser(file_path, schema_tag=schema_tag):
-            if output_queue:
-                # Push records into the queue for parallel processing
-                logging.debug(f"Adding record to queue: {record}")
-                output_queue.put(record)
-            else:
-                # Yield records for sequential processing
-                logging.debug(f"Yielding record: {record}")
-                yield record
-
-        # Notify the consumer that processing is complete
-        if output_queue:
-            logging.debug("Signaling consumer that processing is complete.")
-            output_queue.put(None)
+    # def _flatten_dict(self, data):
+    #     """
+    #     Flattens a nested dictionary and handles repeated elements as individual rows.
+    #
+    #     This is critical for processing hierarchical data structures into a normalized format
+    #     suitable for database operations.
+    #
+    #     Args:
+    #         data (dict): The nested dictionary to be flattened.
+    #
+    #     Returns:
+    #         list[dict]: A list of flattened dictionaries derived from the input data.
+    #
+    #     Example:
+    #         Input: {"key1": "value1", "key2": [{"subkey1": "value2"}, {"subkey1": "value3"}]}
+    #         Output: [{"key1": "value1", "subkey1": "value2"}, {"key1": "value1", "subkey1": "value3"}]
+    #     """
+    #     # Initialize the base record, containing non-nested key-value pairs
+    #     base_record = {}
+    #     # List to store records resulting from nested elements
+    #     nested_records = []
+    #
+    #     # Iterate over the dictionary items
+    #     for key, value in data.items():
+    #         if isinstance(value, list):
+    #             # If the value is a list, iterate through its elements
+    #             for nested in value:
+    #                 if isinstance(nested, dict):
+    #                     # Copy base record and merge with nested dictionary
+    #                     new_record = base_record.copy()
+    #                     new_record.update(nested)
+    #                     nested_records.append(new_record)
+    #         elif isinstance(value, dict):
+    #             # If the value is a dictionary, merge it with the base record
+    #             base_record.update(value)
+    #         else:
+    #             # Add scalar values to the base record
+    #             base_record[key] = value
+    #
+    #     # If no nested records exist, return the base record as a single-item list
+    #     if not nested_records:
+    #         logging.debug("No nested records found; returning base record.")
+    #         return [base_record]
+    #
+    #     # Update each nested record with values from the base record
+    #     for record in nested_records:
+    #         record.update(base_record)
+    #
+    #     logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
+    #     return nested_records
+    #
+    # def _parse_json_file(self, file_path, schema_tag="Records"):
+    #     """
+    #     Parses and flattens JSON records from a file.
+    #
+    #     Args:
+    #         file_path (str): Path to the JSON file.
+    #         schema_tag (str): Key to extract records from the JSON structure (default: "Records").
+    #
+    #     Yields:
+    #         dict: Flattened records extracted from the JSON file.
+    #
+    #     Raises:
+    #         FileNotFoundError: If the JSON file is not found.
+    #         json.JSONDecodeError: If the JSON file contains invalid syntax.
+    #     """
+    #     try:
+    #         # Open and load the JSON file into a Python dictionary
+    #         with open(file_path, "r") as file:
+    #             data = json.load(file)
+    #             logging.info(f"Successfully loaded JSON file: {file_path}")
+    #     except FileNotFoundError:
+    #         # Log and re-raise error if the file is missing
+    #         logging.error(f"JSON file not found: {file_path}")
+    #         raise
+    #     except json.JSONDecodeError as e:
+    #         # Log and re-raise error for invalid JSON syntax
+    #         logging.error(f"Error parsing JSON file: {e}")
+    #         raise
+    #
+    #     # Extract records using the schema tag or fallback to the root of the JSON structure
+    #     records = data.get(schema_tag, data)
+    #
+    #     # Flatten and yield each record
+    #     if isinstance(records, list):
+    #         for record in records:
+    #             for flattened in self._flatten_dict(record):
+    #                 yield flattened
+    #     elif isinstance(records, dict):
+    #         for flattened in self._flatten_dict(records):
+    #             yield flattened
+    #
+    # def _parse_xml_file(self, file_path, schema_tag="Record"):
+    #     """
+    #     Parses and flattens XML records from a file.
+    #
+    #     Args:
+    #         file_path (str): Path to the XML file.
+    #         schema_tag (str): Tag to extract records from the XML structure (default: "Record").
+    #
+    #     Yields:
+    #         dict: Flattened records extracted from the XML file.
+    #
+    #     Raises:
+    #         FileNotFoundError: If the XML file is not found.
+    #         ET.ParseError: If the XML file contains invalid syntax.
+    #     """
+    #     try:
+    #         # Parse the XML file and obtain the root element
+    #         tree = ET.parse(file_path)
+    #         root = tree.getroot()
+    #         logging.info(f"Successfully parsed XML file: {file_path}")
+    #     except FileNotFoundError:
+    #         # Log and re-raise error if the file is missing
+    #         logging.error(f"XML file not found: {file_path}")
+    #         raise
+    #     except ET.ParseError as e:
+    #         # Log and re-raise error for invalid XML syntax
+    #         logging.error(f"Error parsing XML file: {e}")
+    #         raise
+    #
+    #     def parse_element(element):
+    #         """
+    #         Recursively parses an XML element into a dictionary.
+    #
+    #         Args:
+    #             element (xml.etree.ElementTree.Element): The XML element to parse.
+    #
+    #         Returns:
+    #             dict: Parsed representation of the element.
+    #         """
+    #         record = {}
+    #         for child in element:
+    #             if len(child) > 0:
+    #                 # Handle nested elements by appending them to a list
+    #                 if child.tag not in record:
+    #                     record[child.tag] = []
+    #                 record[child.tag].append(parse_element(child))
+    #             else:
+    #                 # Add leaf node text to the record
+    #                 record[child.tag] = child.text.strip() if child.text else None
+    #         return record
+    #
+    #     # Extract and flatten records
+    #     for record_element in root.findall(f".//{schema_tag}"):
+    #         raw_record = parse_element(record_element)
+    #         flattened_records = self._flatten_dict(raw_record)
+    #         for record in flattened_records:
+    #             yield record
+    #
+    # def _process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
+    #     """
+    #     Processes a file (JSON or XML), flattens records, and optionally queues them for processing.
+    #
+    #     Args:
+    #         file_path (str): Path to the input file.
+    #         schema_tag (str): The schema tag name for JSON/XML records.
+    #         file_type (str): File type, either 'json' or 'xml' (default: 'json').
+    #         output_queue (queue.Queue, optional): Queue to stream records for parallel processing.
+    #
+    #     Yields:
+    #         dict: Flattened records if `output_queue` is not specified.
+    #
+    #     Behavior:
+    #         - If `output_queue` is provided, records are pushed to the queue for consumption.
+    #         - If `output_queue` is None, records are yielded sequentially for single-threaded use.
+    #     """
+    #     # Select the appropriate parser based on the file type
+    #     parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
+    #
+    #     # Iterate through parsed records
+    #     for record in parser(file_path, schema_tag=schema_tag):
+    #         if output_queue:
+    #             # Push records into the queue for parallel processing
+    #             logging.debug(f"Adding record to queue: {record}")
+    #             output_queue.put(record)
+    #         else:
+    #             # Yield records for sequential processing
+    #             logging.debug(f"Yielding record: {record}")
+    #             yield record
+    #
+    #     # Notify the consumer that processing is complete
+    #     if output_queue:
+    #         logging.debug("Signaling consumer that processing is complete.")
+    #         output_queue.put(None)
 
     def _transform_and_validate_records(self, records, key_column_mapping):
         """
@@ -592,9 +592,9 @@ class FileProcessor:
             # Process the file using the determined schema and tag and move to the output directory after successful processing
             try:
                 # File-based processing
-                producer = QueueProducer(maxsize=1000)
-                producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
-                self._process(producer=producer, key_column_mapping=schema)
+                file_producer = FileProducer(maxsize=1000)
+                file_producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
+                self._process(producer=file_producer, key_column_mapping=schema)
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:
                 logging.error(f"File processing failed for {file_path}: {e}")
