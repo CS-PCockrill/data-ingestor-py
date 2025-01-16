@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import xml.etree.ElementTree as ET
@@ -8,12 +9,8 @@ from prometheus_client import generate_latest, Counter, Histogram, Summary
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 
-FILE_DB_WRITE_SUCCESS = Counter("file_processor_db_write_success", "Number of successful DB writes")
-FILE_DB_WRITE_FAILURE = Counter("file_processor_write_failure", "Number of failed DB writes")
-FILE_PROCESSING_TIME = Histogram("file_processing_time_seconds", "Time taken to process files")
-
 class FileProcessor:
-    # Prometheus metrics
+    # Prometheus metrics definitions
     METRICS = {
         "records_read": Counter(
             "file_processor_records_read",
@@ -39,11 +36,12 @@ class FileProcessor:
 
     def __init__(self, connection_manager, logger, config):
         """
-        Initialize the FileProcessor.
+        Initialize the FileProcessor instance with required components.
 
         Args:
-            logger (SQLLogger): Logger instance for logging operations.
-            config (dict): Configuration dictionary with database and processing details.
+            connection_manager (DBConnectionManager): Manages database connections.
+            logger (SQLLogger): Handles logging operations.
+            config (dict): Configuration settings for file processing.
         """
         self.connection_manager = connection_manager
         self.logger = logger
@@ -54,28 +52,57 @@ class FileProcessor:
         self.worker_states = {}
         self.state_lock = Lock()  # Protect shared worker_states
 
-    def print_metrics(self):
+        logging.info(f"FileProcessor initialized for table: {self.table_name}")
+
+    def write_metrics_to_file(self, file_path="metrics_output.txt"):
         """
-        Print all Prometheus metrics when the program exits.
+        Write all Prometheus metrics to a specified file when the program exits.
+
+        Args:
+            file_path (str): Path to the output file where metrics will be written.
+
+        Raises:
+            IOError: If writing to the file fails.
         """
-        metrics_output = generate_latest()
-        print("\n=== Prometheus Metrics ===")
-        print(metrics_output.decode("utf-8"))  # Decode bytes to string for printing
+        try:
+            # Generate the latest metrics data
+            metrics_output = generate_latest()
+            with open(file_path, "w") as metrics_file:
+                metrics_file.write(metrics_output.decode("utf-8"))  # Decode bytes for writing
+            logging.info(f"Metrics successfully written to {file_path}")
+        except Exception as e:
+            logging.error(f"Failed to write metrics to file: {e}")
+            raise
 
     def _flatten_dict(self, data):
-        """Flattens a nested dictionary and integrates repeated elements as individual rows."""
-        # Initialize the base record, which stores non-nested key-value pairs
+        """
+        Flattens a nested dictionary and handles repeated elements as individual rows.
+
+        This is critical for processing hierarchical data structures into a normalized format
+        suitable for database operations.
+
+        Args:
+            data (dict): The nested dictionary to be flattened.
+
+        Returns:
+            list[dict]: A list of flattened dictionaries derived from the input data.
+
+        Example:
+            Input: {"key1": "value1", "key2": [{"subkey1": "value2"}, {"subkey1": "value3"}]}
+            Output: [{"key1": "value1", "subkey1": "value2"}, {"key1": "value1", "subkey1": "value3"}]
+        """
+        # Initialize the base record, containing non-nested key-value pairs
         base_record = {}
         # List to store records resulting from nested elements
         nested_records = []
 
-        # Iterate through the dictionary items
+        # Iterate over the dictionary items
         for key, value in data.items():
             if isinstance(value, list):
-                # If the value is a list, iterate through the list
+                # If the value is a list, iterate through its elements
                 for nested in value:
                     if isinstance(nested, dict):
-                        # Copy the base record and merge nested dictionaries
+                        # Copy base record and merge with nested dictionary
                         new_record = base_record.copy()
                         new_record.update(nested)
                         nested_records.append(new_record)
@@ -83,36 +110,51 @@ class FileProcessor:
                 # If the value is a dictionary, merge it with the base record
                 base_record.update(value)
             else:
-                # If the value is neither a list nor a dictionary, add it to the base record
+                # Add scalar values to the base record
                 base_record[key] = value
 
-        # If there are no nested records, return the base record as a single-item list
+        # If no nested records exist, return the base record as a single-item list
         if not nested_records:
+            logging.debug("No nested records found; returning base record.")
             return [base_record]
 
-        # Update each nested record with the base record values
+        # Update each nested record with values from the base record
         for record in nested_records:
             record.update(base_record)
 
+        logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
         return nested_records
 
     def _parse_json_file(self, file_path, schema_tag="Records"):
-        """Parses and flattens JSON records from a file."""
+        """
+        Parses and flattens JSON records from a file.
+
+        Args:
+            file_path (str): Path to the JSON file.
+            schema_tag (str): Key to extract records from the JSON structure (default: "Records").
+
+        Yields:
+            dict: Flattened records extracted from the JSON file.
+
+        Raises:
+            FileNotFoundError: If the JSON file is not found.
+            json.JSONDecodeError: If the JSON file contains invalid syntax.
+        """
         try:
-            # Open and load the JSON file
+            # Open and load the JSON file into a Python dictionary
             with open(file_path, "r") as file:
                 data = json.load(file)
                 logging.info(f"Successfully loaded JSON file: {file_path}")
         except FileNotFoundError:
-            # Handle case where the file does not exist
+            # Log and re-raise error if the file is missing
             logging.error(f"JSON file not found: {file_path}")
             raise
         except json.JSONDecodeError as e:
-            # Handle invalid JSON syntax
+            # Log and re-raise error for invalid JSON syntax
             logging.error(f"Error parsing JSON file: {e}")
             raise
 
-        # Extract records using the schema tag
+        # Extract records using the schema tag or fallback to the root of the JSON structure
         records = data.get(schema_tag, data)
 
         # Flatten and yield each record
@@ -125,27 +167,48 @@ class FileProcessor:
                 yield flattened
 
     def _parse_xml_file(self, file_path, schema_tag="Record"):
-        """Parses and flattens XML records from a file."""
+        """
+        Parses and flattens XML records from a file.
+
+        Args:
+            file_path (str): Path to the XML file.
+            schema_tag (str): Tag to extract records from the XML structure (default: "Record").
+
+        Yields:
+            dict: Flattened records extracted from the XML file.
+
+        Raises:
+            FileNotFoundError: If the XML file is not found.
+            ET.ParseError: If the XML file contains invalid syntax.
+        """
         try:
-            # Parse the XML file
+            # Parse the XML file and obtain the root element
             tree = ET.parse(file_path)
             root = tree.getroot()
             logging.info(f"Successfully parsed XML file: {file_path}")
         except FileNotFoundError:
-            # Handle case where the file does not exist
+            # Log and re-raise error if the file is missing
             logging.error(f"XML file not found: {file_path}")
             raise
         except ET.ParseError as e:
-            # Handle invalid XML syntax
+            # Log and re-raise error for invalid XML syntax
             logging.error(f"Error parsing XML file: {e}")
             raise
 
         def parse_element(element):
-            """Recursively parses an XML element into a dictionary."""
+            """
+            Recursively parses an XML element into a dictionary.
+
+            Args:
+                element (xml.etree.ElementTree.Element): The XML element to parse.
+
+            Returns:
+                dict: Parsed representation of the element.
+            """
             record = {}
             for child in element:
                 if len(child) > 0:
-                    # Handle nested elements by appending to a list
+                    # Handle nested elements by appending them to a list
                     if child.tag not in record:
                         record[child.tag] = []
                     record[child.tag].append(parse_element(child))
@@ -154,7 +217,7 @@ class FileProcessor:
                     record[child.tag] = child.text.strip() if child.text else None
             return record
 
-        # Extract records and flatten them
+        # Extract and flatten records
         for record_element in root.findall(f".//{schema_tag}"):
             raw_record = parse_element(record_element)
             flattened_records = self._flatten_dict(raw_record)
@@ -163,35 +226,51 @@ class FileProcessor:
 
     def _process_file(self, file_path, schema_tag, file_type="json", output_queue=None):
         """
-        Processes a file (JSON or XML), flattens records, and optionally queues them.
+        Processes a file (JSON or XML), flattens records, and optionally queues them for processing.
 
         Args:
             file_path (str): Path to the input file.
             schema_tag (str): The schema tag name for JSON/XML records.
-            file_type (str): Either 'json' or 'xml' to specify file type.
-            output_queue (queue.Queue): Optional queue to stream records to a consumer.
+            file_type (str): File type, either 'json' or 'xml' (default: 'json').
+            output_queue (queue.Queue, optional): Queue to stream records for parallel processing.
+
+        Yields:
+            dict: Flattened records if `output_queue` is not specified.
+
+        Behavior:
+            - If `output_queue` is provided, records are pushed to the queue for consumption.
+            - If `output_queue` is None, records are yielded sequentially for single-threaded use.
         """
-        # Choose the parser based on file type
+        # Select the appropriate parser based on the file type
         parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
 
         # Iterate through parsed records
         for record in parser(file_path, schema_tag=schema_tag):
             if output_queue:
-                # Put records into the queue for parallel processing
+                # Push records into the queue for parallel processing
                 logging.debug(f"Adding record to queue: {record}")
                 output_queue.put(record)
             else:
-                # Yield records sequentially for single-threaded processing
+                # Yield records for sequential processing
                 logging.debug(f"Yielding record: {record}")
                 yield record
 
-        # Signal the consumer that processing is complete
+        # Notify the consumer that processing is complete
         if output_queue:
             logging.debug("Signaling consumer that processing is complete.")
             output_queue.put(None)
 
     def _transform_and_validate_records(self, records, key_column_mapping):
-        """Transform and validate a list of records based on a key-column mapping."""
+        """
+        Transforms and validates a list of records based on a key-column mapping.
+
+        Args:
+            records (list): List of input records to process.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+
+        Returns:
+            list: List of transformed records ready for database insertion.
+        """
         transformed_records = []
         for record in records:
             transformed_record = {}
@@ -202,22 +281,35 @@ class FileProcessor:
                 if json_key in record:
                     transformed_record[db_column] = record[json_key]
                 else:
+                    # Track missing keys for logging purposes
                     missing_keys.add(json_key)
 
             if missing_keys:
-                # Log a warning for missing keys
+                # Log any keys that were expected but not found in the input record
                 logging.warning(f"Record missing keys: {missing_keys}")
 
             transformed_records.append(transformed_record)
 
-        # Log the total number of transformed records
+        # Log the total number of successfully transformed records
         logging.info(f"Transformed {len(transformed_records)} records.")
         return transformed_records
 
-    @METRICS["batch_insert_time"].time()
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
+    @METRICS["batch_insert_time"].time()  # Track time taken for batch inserts
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))  # Retry with exponential backoff
     def _batch_insert_records(self, records, artifact_name, conn):
+        """
+        Perform a batch insert into the database.
+
+        Args:
+            records (list): List of records to insert.
+            artifact_name (str): Artifact name for logging purposes.
+            conn (connection): Database connection to use for the insert.
+
+        Raises:
+            Exception: Rethrows any exceptions encountered during the batch insert.
+        """
         if not records:
+            # Log a warning if no records are provided for insertion
             self.logger.log_job(
                 symbol="GS2001W",
                 job_name=f"{self.table_name} BATCH INS",
@@ -226,6 +318,7 @@ class FileProcessor:
             )
             return
 
+        # Log the start of a batch insert operation
         job_id = self.logger.log_job(
             "",
             "",
@@ -236,6 +329,7 @@ class FileProcessor:
 
         try:
             with conn.cursor() as cur:
+                # Dynamically construct the SQL query for the batch insert
                 columns = records[0].keys()
                 query = 'INSERT INTO {} ({}) VALUES %s'.format(
                     self.table_name,
@@ -243,7 +337,10 @@ class FileProcessor:
                 )
                 values = [[record[col] for col in columns] for record in records]
 
+                # Perform the batch insert
                 execute_values(cur, query, values)
+
+                # Log success and update metrics
                 self.logger.log_job(
                     query,
                     values,
@@ -255,10 +352,10 @@ class FileProcessor:
                     artifact_name=artifact_name,
                     success=True,
                 )
-                # Update processed records metric
-                self.METRICS["records_processed"].inc(len(records))
+                self.METRICS["records_processed"].inc(len(records))  # Increment processed records metric
 
         except Exception as e:
+            # Log failure and increment error metrics
             self.logger.log_job(
                 str(e),
                 symbol="GS2002E",
@@ -273,25 +370,43 @@ class FileProcessor:
             raise
 
     def _consume_and_insert(self, queue, key_column_mapping, artifact_name, worker_id, conn):
+        """
+        Consumes records from the queue, transforms them, and inserts them into the database.
+
+        Args:
+            queue (queue.Queue): Queue containing records to process.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+            artifact_name (str): Artifact name for logging.
+            worker_id (str): Unique identifier for the worker.
+            conn (connection): Database connection to use.
+
+        Behavior:
+            - Batches records from the queue based on `self.batch_size`.
+            - Performs a batch insert when the batch size is met.
+        """
         batch = []
         try:
             while True:
                 record = queue.get()
                 if record is None:
+                    # Signal the end of the queue
                     queue.task_done()
                     break
 
+                # Transform and add the record to the batch
                 batch.append(self._transform_record(record, key_column_mapping))
                 queue.task_done()
 
+                # Perform batch insert when batch size is met
                 if len(batch) >= self.batch_size:
                     self._batch_insert_records(batch, artifact_name, conn)
                     batch.clear()
 
+            # Insert any remaining records
             if batch:
                 self._batch_insert_records(batch, artifact_name, conn)
 
-            # Mark success
+            # Mark worker success
             with self.state_lock:
                 self.worker_states[worker_id]["error"] = False
         except Exception as e:
@@ -299,28 +414,41 @@ class FileProcessor:
             with self.state_lock:
                 self.worker_states[worker_id]["error"] = True
 
+            # Increment error metrics
             self.METRICS["errors"].inc()
         finally:
-            queue.put(None)  # Signal completion
+            # Signal the consumer completion
+            queue.put(None)
 
-    from threading import Event
-
-    @METRICS["file_processing_time"].time()
+    @METRICS["file_processing_time"].time()  # Track total file processing time
     def _process(self, file_path, file_type, schema_tag, key_column_mapping):
+        """
+        Processes a file, transforming and inserting its records using worker threads.
+
+        Args:
+            file_path (str): Path to the input file.
+            file_type (str): File type ('json' or 'xml').
+            schema_tag (str): Schema tag to extract records.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+
+        Behavior:
+            - Uses a producer-consumer model to parallelize processing.
+            - Records metrics for records read, processed, and errors encountered.
+        """
         queue = Queue(maxsize=100)
         all_workers_done = Event()
 
         # Initialize worker states
         self.worker_states = {}
 
-        # Start producer
+        # Start the producer thread
         def producer_task():
             try:
                 for record in self._process_file(file_path, schema_tag, file_type):
                     queue.put(record)
                     self.METRICS["records_read"].inc()  # Increment records read
             finally:
-                # Signal end of production
+                # Signal the end of production
                 all_workers_done.set()
 
         producer = Thread(target=producer_task)
@@ -352,7 +480,7 @@ class FileProcessor:
         for consumer in consumers:
             consumer.join()
 
-        # Finalize transactions and log results
+        # Finalize transactions
         all_committed = True
         for state in self.worker_states.values():
             if state["error"]:
@@ -364,32 +492,50 @@ class FileProcessor:
 
         if not all_committed:
             logging.error("2PC: Transaction rollback due to errors.")
-            self.METRICS["errors"].inc()  # Increment errors for rollback
+            self.METRICS["errors"].inc()
         else:
             logging.info("2PC: All transactions committed successfully.")
 
     def _get_schema_and_tag(self, file_type):
         """
-        Get the schema and tag name dynamically based on the file type.
+        Dynamically retrieve the schema and tag name based on the file type.
 
         Args:
             file_type (str): File type, either 'json' or 'xml'.
 
         Returns:
             tuple: A tuple containing the schema and tag name for the specified file type.
+
+        Raises:
+            ValueError: If an unsupported file type is provided.
         """
         if file_type == "json":
+            # Retrieve schema and tag name for JSON files
             return self.config.get("jsonSchema"), self.config.get("jsonTagName", "Records")
         elif file_type == "xml":
+            # Retrieve schema and tag name for XML files
             return self.config.get("xmlSchema"), self.config.get("xmlTagName", "Record")
         else:
+            # Handle unsupported file types
             raise ValueError(f"Unsupported file type: {file_type}")
 
     def _transform_record(self, record, key_column_mapping):
+        """
+        Transforms a single record based on the provided key-column mapping.
+
+        Args:
+            record (dict): Input record to be transformed.
+            key_column_mapping (dict): Mapping of JSON keys to database column names.
+
+        Returns:
+            dict: Transformed record with keys mapped to database columns and a 'processed' flag.
+        """
+        # Transform record by mapping keys
         transformed_record = {
             db_column: record.get(json_key)
             for json_key, db_column in key_column_mapping.items()
         }
+        # Add a flag to indicate the record's processed status
         transformed_record["processed"] = False
         return transformed_record
 
@@ -399,11 +545,23 @@ class FileProcessor:
 
         Args:
             files (list): List of file paths to process.
+
+        Behavior:
+            - Determines the file type (JSON or XML) based on the file extension.
+            - Fetches the schema and tag name for the file type.
+            - Calls the `_process` method to handle parsing and insertion for each file.
         """
         for file_path in files:
+            # Determine the file type based on the file extension
             file_type = "json" if file_path.endswith(".json") else "xml"
+
+            # Retrieve the appropriate schema and tag name
             schema, tag_name = self._get_schema_and_tag(file_type)
+
+            # Log the start of processing for the file
             logging.info(f"Processing file {file_path} as {file_type}.")
+
+            # Process the file using the determined schema and tag
             self._process(file_path, file_type, tag_name, schema)
 
     def close(self):
