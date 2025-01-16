@@ -19,6 +19,7 @@ logging.basicConfig(
     ]
 )
 
+
 if __name__ == "__main__":
     # Parse command-line arguments for input file and interface ID
     parser = argparse.ArgumentParser(description="Stream and process JSON/XML files.")

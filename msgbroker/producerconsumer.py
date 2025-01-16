@@ -9,6 +9,8 @@ from threading import Lock
 from psycopg2.extras import execute_values
 from tenacity import stop_after_attempt, wait_exponential, retry
 
+from config.config import METRICS
+
 
 class Producer(ABC):
     def __init__(self):
@@ -278,28 +280,6 @@ class FileProducer(Producer):
 
 
 class SQLConsumer(Consumer):
-    METRICS = {
-        "records_read": Counter(
-            "file_processor_records_read",
-            "Total number of records read from files."
-        ),
-        "records_processed": Counter(
-            "file_processor_records_processed",
-            "Total number of records successfully inserted into the database."
-        ),
-        "errors": Counter(
-            "file_processor_errors",
-            "Total number of errors encountered during processing."
-        ),
-        "file_processing_time": Summary(
-            "file_processor_processing_time_seconds",
-            "Time taken to process a file, including all worker operations."
-        ),
-        "batch_insert_time": Histogram(
-            "file_processor_batch_insert_time_seconds",
-            "Time taken to perform batch inserts into the database."
-        )
-    }
 
     def __init__(self, logger, producer, connection_manager, key_column_mapping, batch_size=100):
         """
