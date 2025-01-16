@@ -3,7 +3,7 @@ import logging
 import xml.etree.ElementTree as ET
 from psycopg2.extras import execute_values
 from queue import Queue
-from threading import Thread, Lock
+from threading import Thread, Lock, Event
 from prometheus_client import Counter, Histogram
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -265,39 +265,54 @@ class FileProcessor:
         finally:
             queue.put(None)  # Signal completion
 
+    from threading import Event
+
     def _process(self, file_path, file_type, schema_tag, key_column_mapping):
         queue = Queue(maxsize=100)
+        all_workers_done = Event()
 
         # Initialize worker states
-        with self.state_lock:
-            self.worker_states = {}
+        self.worker_states = {}
 
         # Start producer
-        producer = Thread(
-            target=lambda: [
-                queue.put(record)
-                for record in self._process_file(file_path, schema_tag, file_type)
-            ]
-        )
+        def producer_task():
+            try:
+                for record in self._process_file(file_path, schema_tag, file_type):
+                    queue.put(record)
+            finally:
+                # Signal end of production
+                all_workers_done.set()
+
+        producer = Thread(target=producer_task)
         producer.start()
 
         # Start consumer workers
+        consumers = []
         for worker_id in range(self.config["numWorkers"]):
             conn = self.connection_manager.connect()
             worker_name = f"worker_{worker_id}"
-            with self.state_lock:
-                self.worker_states[worker_name] = {"conn": conn, "error": False}
+            self.worker_states[worker_name] = {"conn": conn, "error": False}
 
             consumer = Thread(
                 target=self._consume_and_insert,
                 args=(queue, key_column_mapping, file_path, worker_name, conn),
             )
             consumer.start()
+            consumers.append(consumer)
 
+        # Wait for producer to finish
         producer.join()
-        queue.put(None)  # Signal end of records
 
-        # Wait for all workers to finish and finalize 2PC
+        # Signal the end of records for workers
+        all_workers_done.wait()
+        for _ in range(len(consumers)):
+            queue.put(None)
+
+        # Wait for all consumers to finish
+        for consumer in consumers:
+            consumer.join()
+
+        # Finalize transactions and log results
         all_committed = True
         for state in self.worker_states.values():
             if state["error"]:
