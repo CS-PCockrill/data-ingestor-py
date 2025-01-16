@@ -40,7 +40,7 @@ class FileProducer(Producer):
             raise ValueError("Source not set for FileProducer")
         for record in self._process_file(self.file_path, self.schema_tag, self.file_type):
             self.produce(record)
-            METRICS["records_read"] += 1
+            METRICS["records_read"].inc()
 
         self.signal_done()
 
