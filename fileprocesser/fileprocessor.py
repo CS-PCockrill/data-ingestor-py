@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from psycopg2.extras import execute_values
 from queue import Queue
 from threading import Thread, Lock, Event
-from prometheus_client import Counter, Histogram
+from prometheus_client import generate_latest, Counter, Histogram, Summary
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 
@@ -13,6 +13,30 @@ FILE_DB_WRITE_FAILURE = Counter("file_processor_write_failure", "Number of faile
 FILE_PROCESSING_TIME = Histogram("file_processing_time_seconds", "Time taken to process files")
 
 class FileProcessor:
+    # Prometheus metrics
+    METRICS = {
+        "records_read": Counter(
+            "file_processor_records_read",
+            "Total number of records read from files."
+        ),
+        "records_processed": Counter(
+            "file_processor_records_processed",
+            "Total number of records successfully inserted into the database."
+        ),
+        "errors": Counter(
+            "file_processor_errors",
+            "Total number of errors encountered during processing."
+        ),
+        "file_processing_time": Summary(
+            "file_processor_processing_time_seconds",
+            "Time taken to process a file, including all worker operations."
+        ),
+        "batch_insert_time": Histogram(
+            "file_processor_batch_insert_time_seconds",
+            "Time taken to perform batch inserts into the database."
+        )
+    }
+
     def __init__(self, connection_manager, logger, config):
         """
         Initialize the FileProcessor.
@@ -30,6 +54,13 @@ class FileProcessor:
         self.worker_states = {}
         self.state_lock = Lock()  # Protect shared worker_states
 
+    def print_metrics(self):
+        """
+        Print all Prometheus metrics when the program exits.
+        """
+        metrics_output = generate_latest()
+        print("\n=== Prometheus Metrics ===")
+        print(metrics_output.decode("utf-8"))  # Decode bytes to string for printing
 
     def _flatten_dict(self, data):
         """Flattens a nested dictionary and integrates repeated elements as individual rows."""
@@ -183,6 +214,7 @@ class FileProcessor:
         logging.info(f"Transformed {len(transformed_records)} records.")
         return transformed_records
 
+    @METRICS["batch_insert_time"].time()
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
     def _batch_insert_records(self, records, artifact_name, conn):
         if not records:
@@ -223,6 +255,9 @@ class FileProcessor:
                     artifact_name=artifact_name,
                     success=True,
                 )
+                # Update processed records metric
+                self.METRICS["records_processed"].inc(len(records))
+
         except Exception as e:
             self.logger.log_job(
                 str(e),
@@ -234,6 +269,7 @@ class FileProcessor:
                 success=False,
                 error_message=str(e),
             )
+            self.METRICS["errors"].inc()
             raise
 
     def _consume_and_insert(self, queue, key_column_mapping, artifact_name, worker_id, conn):
@@ -262,11 +298,14 @@ class FileProcessor:
             logging.error(f"Worker {worker_id} encountered an error: {e}")
             with self.state_lock:
                 self.worker_states[worker_id]["error"] = True
+
+            self.METRICS["errors"].inc()
         finally:
             queue.put(None)  # Signal completion
 
     from threading import Event
 
+    @METRICS["file_processing_time"].time()
     def _process(self, file_path, file_type, schema_tag, key_column_mapping):
         queue = Queue(maxsize=100)
         all_workers_done = Event()
@@ -279,6 +318,7 @@ class FileProcessor:
             try:
                 for record in self._process_file(file_path, schema_tag, file_type):
                     queue.put(record)
+                    self.METRICS["records_read"].inc()  # Increment records read
             finally:
                 # Signal end of production
                 all_workers_done.set()
@@ -324,6 +364,7 @@ class FileProcessor:
 
         if not all_committed:
             logging.error("2PC: Transaction rollback due to errors.")
+            self.METRICS["errors"].inc()  # Increment errors for rollback
         else:
             logging.info("2PC: All transactions committed successfully.")
 
