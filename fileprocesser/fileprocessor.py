@@ -8,7 +8,7 @@ from threading import Thread, Lock, Event
 from prometheus_client import generate_latest, Counter, Histogram, Summary
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from msgbroker.producerconsumer import FileProducer, QueueConsumer
+from msgbroker.producerconsumer import FileProducer, QueueConsumer, SQLConsumer
 
 
 class FileProcessor:
@@ -296,156 +296,148 @@ class FileProcessor:
         logging.info(f"Transformed {len(transformed_records)} records.")
         return transformed_records
 
-    @METRICS["batch_insert_time"].time()  # Track time taken for batch inserts
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))  # Retry with exponential backoff
-    def _batch_insert_records(self, records, artifact_name, conn):
-        """
-        Perform a batch insert into the database.
+    # @METRICS["batch_insert_time"].time()  # Track time taken for batch inserts
+    # @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))  # Retry with exponential backoff
+    # def _batch_insert_records(self, records, artifact_name, conn):
+    #     """
+    #     Perform a batch insert into the database.
+    #
+    #     Args:
+    #         records (list): List of records to insert.
+    #         artifact_name (str): Artifact name for logging purposes.
+    #         conn (connection): Database connection to use for the insert.
+    #
+    #     Raises:
+    #         Exception: Rethrows any exceptions encountered during the batch insert.
+    #     """
+    #     if not records:
+    #         # Log a warning if no records are provided for insertion
+    #         self.logger.log_job(
+    #             symbol="GS2001W",
+    #             job_name=f"{self.table_name} BATCH INS",
+    #             success=False,
+    #             artifact_name=artifact_name,
+    #         )
+    #         return
+    #
+    #     # Log the start of a batch insert operation
+    #     job_id = self.logger.log_job(
+    #         "",
+    #         "",
+    #         symbol="GS1002I",
+    #         job_name=f"{self.table_name} BATCH INS",
+    #         artifact_name=artifact_name,
+    #     )
+    #
+    #     try:
+    #         with conn.cursor() as cur:
+    #             # Dynamically construct the SQL query for the batch insert
+    #             columns = records[0].keys()
+    #             query = 'INSERT INTO {} ({}) VALUES %s'.format(
+    #                 self.table_name,
+    #                 ', '.join('"{}"'.format(col.lower()) for col in columns)
+    #             )
+    #             values = [[record[col] for col in columns] for record in records]
+    #
+    #             # Perform the batch insert
+    #             execute_values(cur, query, values)
+    #
+    #             # Log success and update metrics
+    #             self.logger.log_job(
+    #                 query,
+    #                 values,
+    #                 symbol="GS1002I",
+    #                 job_name=f"{self.table_name} BATCH INS",
+    #                 job_id=job_id,
+    #                 query=query,
+    #                 values=values,
+    #                 artifact_name=artifact_name,
+    #                 success=True,
+    #             )
+    #             self.METRICS["records_processed"].inc(len(records))  # Increment processed records metric
+    #
+    #     except Exception as e:
+    #         # Log failure and increment error metrics
+    #         self.logger.log_job(
+    #             str(e),
+    #             symbol="GS2002E",
+    #             job_name=f"{self.table_name} BATCH INS",
+    #             job_id=job_id,
+    #             query=query,
+    #             artifact_name=artifact_name,
+    #             success=False,
+    #             error_message=str(e),
+    #         )
+    #         self.METRICS["errors"].inc()
+    #         raise
 
-        Args:
-            records (list): List of records to insert.
-            artifact_name (str): Artifact name for logging purposes.
-            conn (connection): Database connection to use for the insert.
-
-        Raises:
-            Exception: Rethrows any exceptions encountered during the batch insert.
-        """
-        if not records:
-            # Log a warning if no records are provided for insertion
-            self.logger.log_job(
-                symbol="GS2001W",
-                job_name=f"{self.table_name} BATCH INS",
-                success=False,
-                artifact_name=artifact_name,
-            )
-            return
-
-        # Log the start of a batch insert operation
-        job_id = self.logger.log_job(
-            "",
-            "",
-            symbol="GS1002I",
-            job_name=f"{self.table_name} BATCH INS",
-            artifact_name=artifact_name,
-        )
-
-        try:
-            with conn.cursor() as cur:
-                # Dynamically construct the SQL query for the batch insert
-                columns = records[0].keys()
-                query = 'INSERT INTO {} ({}) VALUES %s'.format(
-                    self.table_name,
-                    ', '.join('"{}"'.format(col.lower()) for col in columns)
-                )
-                values = [[record[col] for col in columns] for record in records]
-
-                # Perform the batch insert
-                execute_values(cur, query, values)
-
-                # Log success and update metrics
-                self.logger.log_job(
-                    query,
-                    values,
-                    symbol="GS1002I",
-                    job_name=f"{self.table_name} BATCH INS",
-                    job_id=job_id,
-                    query=query,
-                    values=values,
-                    artifact_name=artifact_name,
-                    success=True,
-                )
-                self.METRICS["records_processed"].inc(len(records))  # Increment processed records metric
-
-        except Exception as e:
-            # Log failure and increment error metrics
-            self.logger.log_job(
-                str(e),
-                symbol="GS2002E",
-                job_name=f"{self.table_name} BATCH INS",
-                job_id=job_id,
-                query=query,
-                artifact_name=artifact_name,
-                success=False,
-                error_message=str(e),
-            )
-            self.METRICS["errors"].inc()
-            raise
-
-    def _consume_and_insert(self, consumer, key_column_mapping, artifact_name, worker_id, conn):
-        """
-        Consumes records from the queue, transforms them, and inserts them into the database.
-
-        Args:
-            consumer (Consumer): Consumer instance to fetch records.
-            key_column_mapping (dict): Mapping of JSON keys to database column names.
-            artifact_name (str): Artifact name for logging.
-            worker_id (str): Unique identifier for the worker.
-            conn (connection): Database connection to use.
-
-        Behavior:
-            - Batches records from the queue based on `self.batch_size`.
-            - Performs a batch insert when the batch size is met.
-        """
-        batch = []
-        try:
-            while True:
-                record = consumer.consume()
-                if record is None:
-                    # Signal the end of consumption
-                    break
-
-                # Transform and add the record to the batch
-                batch.append(self._transform_record(record, key_column_mapping))
-
-                # Perform batch insert when batch size is met
-                if len(batch) >= self.batch_size:
-                    self._batch_insert_records(batch, artifact_name, conn)
-                    batch.clear()
-
-            # Insert any remaining records
-            if batch:
-                self._batch_insert_records(batch, artifact_name, conn)
-
-            # Mark worker success
-            with self.state_lock:
-                self.worker_states[worker_id]["error"] = False
-        except Exception as e:
-            logging.error(f"Worker {worker_id} encountered an error: {e}")
-            with self.state_lock:
-                self.worker_states[worker_id]["error"] = True
-
-            # Increment error metrics
-            self.METRICS["errors"].inc()
+    # def _consume_and_insert(self, consumer, key_column_mapping, artifact_name, worker_id, conn):
+    #     """
+    #     Consumes records from the queue, transforms them, and inserts them into the database.
+    #
+    #     Args:
+    #         consumer (Consumer): Consumer instance to fetch records.
+    #         key_column_mapping (dict): Mapping of JSON keys to database column names.
+    #         artifact_name (str): Artifact name for logging.
+    #         worker_id (str): Unique identifier for the worker.
+    #         conn (connection): Database connection to use.
+    #
+    #     Behavior:
+    #         - Batches records from the queue based on `self.batch_size`.
+    #         - Performs a batch insert when the batch size is met.
+    #     """
+    #     batch = []
+    #     try:
+    #         while True:
+    #             record = consumer.consume()
+    #             if record is None:
+    #                 # Signal the end of consumption
+    #                 break
+    #
+    #             # Transform and add the record to the batch
+    #             batch.append(self._transform_record(record, key_column_mapping))
+    #
+    #             # Perform batch insert when batch size is met
+    #             if len(batch) >= self.batch_size:
+    #                 self._batch_insert_records(batch, artifact_name, conn)
+    #                 batch.clear()
+    #
+    #         # Insert any remaining records
+    #         if batch:
+    #             self._batch_insert_records(batch, artifact_name, conn)
+    #
+    #         # Mark worker success
+    #         with self.state_lock:
+    #             self.worker_states[worker_id]["error"] = False
+    #     except Exception as e:
+    #         logging.error(f"Worker {worker_id} encountered an error: {e}")
+    #         with self.state_lock:
+    #             self.worker_states[worker_id]["error"] = True
+    #
+    #         # Increment error metrics
+    #         self.METRICS["errors"].inc()
 
     @METRICS["file_processing_time"].time()  # Track total file processing time
-    def _process(self, producer, consumer_cls=None, key_column_mapping=None):
+    def _process(self, producer, consumer, key_column_mapping=None):
         """
         Processes records using producer and consumer components.
 
         Args:
-            producer (Producer): The producer instance for the message queue.
-            consumer_cls (type): The consumer class to use.
-            key_column_mapping (dict): Mapping of JSON keys to database column names.
+            producer (Producer): The producer instance for generating records.
+            consumer (Consumer): The consumer instance for processing records.
+            key_column_mapping (dict): Mapping of JSON keys to database column names (optional).
 
         Behavior:
             - Uses the provided producer to generate records.
-            - Uses the provided consumer class to process records.
+            - Passes records from the producer to the consumer for processing.
         """
-        if not consumer_cls:
-            # Use default QueueConsumer if no class provided
-            consumer_cls = QueueConsumer
-
-        consumer = consumer_cls(producer)  # Instantiate consumer with the producer
         all_workers_done = Event()
 
-        # Initialize worker states
-        self.worker_states = {}
-
         try:
-            # Start the producer
+            # Start the producer task
             def producer_task():
                 try:
-                    producer.produce_from_source()  # Producer handles its own source logic
+                    producer.produce_from_source()  # The producer generates and queues records
                 except Exception as e:
                     logging.error(f"Producer encountered an error: {e}")
                     self.METRICS["errors"].inc()
@@ -457,67 +449,33 @@ class FileProcessor:
             producer_thread = Thread(target=producer_task)
             producer_thread.start()
 
-            # Start consumer workers
-            consumers = []
-            try:
-                for worker_id in range(self.config["numWorkers"]):
-                    conn = self.connection_manager.connect()
-                    worker_name = f"worker_{worker_id}"
-                    self.worker_states[worker_name] = {"conn": conn, "error": False}
+            # Start the consumer task
+            def consumer_task():
+                try:
+                    consumer.consume()  # The consumer processes records from the producer
+                except Exception as e:
+                    logging.error(f"Consumer encountered an error: {e}")
+                    self.METRICS["errors"].inc()
+                    raise
+                finally:
+                    consumer.finalize()  # Finalize consumer after consumption
 
-                    # Instantiate the consumer for each worker
-                    consumer_instance = consumer_cls(producer)
+            consumer_thread = Thread(target=consumer_task)
+            consumer_thread.start()
 
-                    # consumer, key_column_mapping, artifact_name, worker_id, conn
-                    consumer_thread = Thread(
-                        target=self._consume_and_insert,
-                        args=(consumer_instance, key_column_mapping, producer.artifact_name, worker_name, conn),
-                    )
-                    consumer_thread.start()
-                    consumers.append(consumer_thread)
-            except Exception as e:
-                logging.error(f"Failed to initialize consumers: {e}")
-                self.METRICS["errors"].inc()
-                raise
-
-            # Wait for producer to finish
+            # Wait for producer and consumer to finish
             producer_thread.join()
-
-            # Signal the end of records for workers
             all_workers_done.wait()
-            for _ in range(len(consumers)):
-                consumer.signal_done()
+            consumer.signal_done()  # Notify the consumer of end-of-production
+            consumer_thread.join()
 
-            # Wait for all consumers to finish
-            for consumer_thread in consumers:
-                consumer_thread.join()
-
-            # Finalize transactions
-            all_committed = True
-            try:
-                for state in self.worker_states.values():
-                    if state["error"]:
-                        all_committed = False
-                        state["conn"].rollback()
-                    else:
-                        state["conn"].commit()
-                    state["conn"].close()
-            except Exception as e:
-                logging.error(f"Error during transaction finalization: {e}")
-                self.METRICS["errors"].inc()
-                raise
-
-            if not all_committed:
-                logging.error("2PC: Transaction rollback due to errors.")
-                self.METRICS["errors"].inc()
-            else:
-                logging.info("2PC: All transactions committed successfully.")
+            logging.info("Processing completed successfully.")
         except Exception as e:
             logging.error(f"Failed to process records: {e}")
             self.METRICS["errors"].inc()
             raise
         finally:
-            producer.close()
+            producer.close()  # Ensure producer resources are released
 
     def _get_schema_and_tag(self, file_type):
         """
@@ -595,7 +553,20 @@ class FileProcessor:
                 # File-based processing
                 file_producer = FileProducer(maxsize=1000)
                 file_producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
-                self._process(producer=file_producer, key_column_mapping=schema)
+
+                consumer = SQLConsumer(
+                    logger=self.logger,
+                    producer=producer,
+                    connection_manager=self.connection_manager,
+                    key_column_mapping=schema,
+                    batch_size=100
+                )
+
+                # Invoke the processing pipeline
+                self._process(producer=producer, consumer=consumer, key_column_mapping=schema)
+
+                # sql_consumer = SQLConsumer(producer, self.connection_manager, key_column_mapping)
+                # self._process(producer=file_producer, consumer_cls=SQLConsumer, key_column_mapping=schema)
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:
                 logging.error(f"File processing failed for {file_path}: {e}")
