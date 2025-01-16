@@ -37,11 +37,23 @@ class SQLLogger:
     def __init__(self, connection_manager, context):
         self.connection_manager = connection_manager
         self.conn = self.connection_manager.connect()
-        self.cursor = self.conn.cursor()
         self.context = context
         self.query_builder = QueryBuilder(context.logs_table)
-        self.error_resolver = ErrorResolver(self.cursor, context.error_table)
+        # Use a connection-level cursor in ErrorResolver
+        self.error_resolver = ErrorResolver(self.conn, context.error_table)
         self.fallback_logger = setup_fallback_logger()
+
+    def _execute_query(self, query, parameters):
+        """
+        Helper method to execute a query with a local cursor.
+        """
+        with self.conn.cursor() as cursor:
+            cursor.execute(query, parameters)
+            if query.strip().lower().startswith("insert"):
+                # Return the generated ID for insert queries
+                return cursor.fetchone()[0]
+            # Commit changes for all queries
+            self.conn.commit()
 
     def _insert_job(self, parameters):
         insert_query = self.query_builder.build_insert_query([
@@ -50,10 +62,7 @@ class SQLLogger:
             "user_id", "host_name", "table_name"
         ])
         try:
-            self.cursor.execute(insert_query, parameters)
-            job_id = self.cursor.fetchone()[0]
-            self.conn.commit()
-            return job_id
+            return self._execute_query(insert_query, parameters)
         except Exception as e:
             logging.error(f"Failed to insert job: {e}")
             raise
@@ -64,8 +73,7 @@ class SQLLogger:
             "query", "values", "user_id", "table_name"
         ])
         try:
-            self.cursor.execute(update_query, parameters)
-            self.conn.commit()
+            self._execute_query(update_query, parameters)
         except Exception as e:
             logging.error(f"Failed to update job: {e}")
             raise
@@ -100,12 +108,10 @@ class SQLLogger:
             else:
                 self._update_job(parameters + (job_id,))
 
-            # Increment the success counter
-            LOG_DB_WRITE_SUCCESS.inc()
+            LOG_DB_WRITE_SUCCESS.inc()  # Increment success counter
             return job_id
         except Exception as e:
-            # Increment the failure counter
-            LOG_DB_WRITE_FAILURE.inc()
+            LOG_DB_WRITE_FAILURE.inc()  # Increment failure counter
             logging.error(f"Logging job failed: {e}")
             self._fallback_log(symbol, str(e), kwargs)
 
@@ -131,8 +137,6 @@ class SQLLogger:
         self.fallback_logger.info(log_entry)
 
     def close(self):
-        if self.cursor:
-            self.cursor.close()
         if self.conn:
             self.conn.close()
         logging.info("SQL Logger connection closed.")
