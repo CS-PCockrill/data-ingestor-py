@@ -1,4 +1,4 @@
-from prometheus_client import generate_latest, Counter, Histogram, Summary
+from prometheus_client import Counter, Histogram, Summary
 
 INTERFACE_IDS = {
     key: "interfaces/mist-ams/control-file.json"

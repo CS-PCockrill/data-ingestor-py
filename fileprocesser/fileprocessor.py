@@ -1,10 +1,11 @@
 import os
 import logging
 from threading import Thread, Lock, Event
-from prometheus_client import generate_latest, Counter, Histogram, Summary
+from prometheus_client import generate_latest
 
 from config.config import METRICS
-from msgbroker.producerconsumer import FileProducer, SQLConsumer
+from msgbroker.file_producer import FileProducer
+from msgbroker.sql_consumer import SQLConsumer
 
 class FileProcessor:
 
@@ -234,39 +235,39 @@ class FileProcessor:
     #         logging.debug("Signaling consumer that processing is complete.")
     #         output_queue.put(None)
 
-    def _transform_and_validate_records(self, records, key_column_mapping):
-        """
-        Transforms and validates a list of records based on a key-column mapping.
-
-        Args:
-            records (list): List of input records to process.
-            key_column_mapping (dict): Mapping of JSON keys to database column names.
-
-        Returns:
-            list: List of transformed records ready for database insertion.
-        """
-        transformed_records = []
-        for record in records:
-            transformed_record = {}
-            missing_keys = set()
-
-            # Map keys from the record to the specified schema
-            for json_key, db_column in key_column_mapping.items():
-                if json_key in record:
-                    transformed_record[db_column] = record[json_key]
-                else:
-                    # Track missing keys for logging purposes
-                    missing_keys.add(json_key)
-
-            if missing_keys:
-                # Log any keys that were expected but not found in the input record
-                logging.warning(f"Record missing keys: {missing_keys}")
-
-            transformed_records.append(transformed_record)
-
-        # Log the total number of successfully transformed records
-        logging.info(f"Transformed {len(transformed_records)} records.")
-        return transformed_records
+    # def _transform_and_validate_records(self, records, key_column_mapping):
+    #     """
+    #     Transforms and validates a list of records based on a key-column mapping.
+    #
+    #     Args:
+    #         records (list): List of input records to process.
+    #         key_column_mapping (dict): Mapping of JSON keys to database column names.
+    #
+    #     Returns:
+    #         list: List of transformed records ready for database insertion.
+    #     """
+    #     transformed_records = []
+    #     for record in records:
+    #         transformed_record = {}
+    #         missing_keys = set()
+    #
+    #         # Map keys from the record to the specified schema
+    #         for json_key, db_column in key_column_mapping.items():
+    #             if json_key in record:
+    #                 transformed_record[db_column] = record[json_key]
+    #             else:
+    #                 # Track missing keys for logging purposes
+    #                 missing_keys.add(json_key)
+    #
+    #         if missing_keys:
+    #             # Log any keys that were expected but not found in the input record
+    #             logging.warning(f"Record missing keys: {missing_keys}")
+    #
+    #         transformed_records.append(transformed_record)
+    #
+    #     # Log the total number of successfully transformed records
+    #     logging.info(f"Transformed {len(transformed_records)} records.")
+    #     return transformed_records
 
     # @METRICS["batch_insert_time"].time()  # Track time taken for batch inserts
     # @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))  # Retry with exponential backoff
@@ -471,26 +472,6 @@ class FileProcessor:
         else:
             # Handle unsupported file types
             raise ValueError(f"Unsupported file type: {file_type}")
-
-    def _transform_record(self, record, key_column_mapping):
-        """
-        Transforms a single record based on the provided key-column mapping.
-
-        Args:
-            record (dict): Input record to be transformed.
-            key_column_mapping (dict): Mapping of JSON keys to database column names.
-
-        Returns:
-            dict: Transformed record with keys mapped to database columns and a 'processed' flag.
-        """
-        # Transform record by mapping keys
-        transformed_record = {
-            db_column: record.get(json_key)
-            for json_key, db_column in key_column_mapping.items()
-        }
-        # Add a flag to indicate the record's processed status
-        transformed_record["processed"] = False
-        return transformed_record
 
     def process_files(self, files, producer=None):
         """
