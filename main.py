@@ -82,6 +82,6 @@ if __name__ == "__main__":
 
     processor.process_files(files)
 
-    processor.close()
-    logger.close()
+    # processor.close()
+    # logger.close()
 
