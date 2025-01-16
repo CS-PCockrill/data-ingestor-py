@@ -2,27 +2,35 @@ import logging
 import datetime
 import json
 import socket
+
+import logging.handlers
+from prometheus_client import Counter, Histogram
+from db.querybuilder import QueryBuilder
 from errors.errorresolver import ErrorResolver
 
-class QueryBuilder:
-    def __init__(self, table_name):
-        self.table_name = table_name
+LOG_DB_WRITE_SUCCESS = Counter("log_db_write_success", "Number of successful DB writes")
+LOG_DB_WRITE_FAILURE = Counter("log_db_write_failure", "Number of failed DB writes")
+LOG_PROCESSING_TIME = Histogram("log_processing_time_seconds", "Time taken to process logs")
 
-    def build_insert_query(self, columns):
-        column_list = ", ".join(columns)
-        placeholders = ", ".join(["%s"] * len(columns))
-        return f"INSERT INTO {self.table_name} ({column_list}) VALUES ({placeholders}) RETURNING id"
-
-    def build_update_query(self, columns, condition="id = %s"):
-        set_clause = ", ".join([f"{col} = %s" for col in columns])
-        return f"UPDATE {self.table_name} SET {set_clause} WHERE {condition}"
+def setup_fallback_logger():
+    fallback_logger = logging.getLogger("fallback_logger")
+    handler = logging.handlers.RotatingFileHandler(
+        "fallback_logs.json",
+        maxBytes=5 * 1024 * 1024,  # 5 MB
+        backupCount=3,  # Keep 3 backup files
+    )
+    handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    fallback_logger.addHandler(handler)
+    fallback_logger.setLevel(logging.INFO)
+    return fallback_logger
 
 class LoggerContext:
-    def __init__(self, interface_type, user_id, table_name, error_table_name):
+    def __init__(self, interface_type, user_id, table_name, error_table_name, logs_table_name):
         self.interface_type = interface_type
         self.user_id = user_id
         self.table_name = table_name
         self.error_table = error_table_name
+        self.logs_table = logs_table_name
 
 
 class SQLLogger:
@@ -31,8 +39,9 @@ class SQLLogger:
         self.conn = self.connection_manager.connect()
         self.cursor = self.conn.cursor()
         self.context = context
-        self.query_builder = QueryBuilder("ss_logs")
+        self.query_builder = QueryBuilder(context.logs_table)
         self.error_resolver = ErrorResolver(self.cursor, context.error_table)
+        self.fallback_logger = setup_fallback_logger()
 
     def _insert_job(self, parameters):
         insert_query = self.query_builder.build_insert_query([
@@ -61,32 +70,65 @@ class SQLLogger:
             logging.error(f"Failed to update job: {e}")
             raise
 
+    @LOG_PROCESSING_TIME.time()
     def log_job(self, *args, symbol, **kwargs):
-        severity, message = self.error_resolver.resolve(symbol, *args)
-        current_time = datetime.datetime.now(datetime.timezone.utc)
-        host_name = socket.gethostname()
+        try:
+            severity, message = self.error_resolver.resolve(symbol, *args)
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            host_name = socket.gethostname()
 
-        job_id = kwargs.get("job_id")
-        parameters = (
-            kwargs.get("job_name", "Job"),
-            kwargs.get("job_type", self.context.interface_type),
-            symbol,
-            severity,
-            "IN PROGRESS" if job_id is None else ("SUCCESS" if kwargs.get("success") else "FAILURE"),
-            current_time,
-            message,
-            kwargs.get("error_message"),
-            kwargs.get("query"),
-            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
-            kwargs.get("artifact_name"),
-            self.context.user_id,
-            host_name,
-            self.context.table_name,
+            job_id = kwargs.get("job_id")
+            parameters = (
+                kwargs.get("job_name", "Job"),
+                kwargs.get("job_type", self.context.interface_type),
+                symbol,
+                severity,
+                "IN PROGRESS" if job_id is None else ("SUCCESS" if kwargs.get("success") else "FAILURE"),
+                current_time,
+                message,
+                kwargs.get("error_message"),
+                kwargs.get("query"),
+                json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
+                kwargs.get("artifact_name"),
+                self.context.user_id,
+                host_name,
+                self.context.table_name,
+            )
+
+            if job_id is None:
+                job_id = self._insert_job(parameters)
+            else:
+                self._update_job(parameters + (job_id,))
+
+            # Increment the success counter
+            LOG_DB_WRITE_SUCCESS.inc()
+            return job_id
+        except Exception as e:
+            # Increment the failure counter
+            LOG_DB_WRITE_FAILURE.inc()
+            logging.error(f"Logging job failed: {e}")
+            self._fallback_log(symbol, str(e), kwargs)
+
+    def _format_log_entry(self, **kwargs):
+        log_entry = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "host": socket.gethostname(),
+            "context": {
+                "interface_type": self.context.interface_type,
+                "user_id": self.context.user_id,
+                "table_name": self.context.table_name,
+            },
+            **kwargs,
+        }
+        return json.dumps(log_entry)
+
+    def _fallback_log(self, symbol, message, kwargs):
+        log_entry = self._format_log_entry(
+            symbol=symbol,
+            message=message,
+            additional_info=kwargs,
         )
-        if job_id is None:
-            return self._insert_job(parameters)
-        else:
-            self._update_job(parameters + (job_id,))
+        self.fallback_logger.info(log_entry)
 
     def close(self):
         if self.cursor:

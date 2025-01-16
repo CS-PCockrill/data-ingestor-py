@@ -2,6 +2,7 @@
   "interfaceType": "MistAMS JSON/XML File",
   "type": "postgresql",
   "tableName": "SFLW_RECS",
+  "logsTableName": "SS_LOGS",
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",
   "errorDefinitionSourceType": "file",
@@ -14,6 +15,7 @@
   "jsonTagName": "Records",
   "xmlTagName": "Record",
   "sqlBatchSize": 5,
+  "numWorkers": 2,
   "jsonSchema": {
     "user": "USER",
     "dt_created": "DT_CREATED",
