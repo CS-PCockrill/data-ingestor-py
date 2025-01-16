@@ -281,7 +281,7 @@ class FileProducer(Producer):
 
 class SQLConsumer(Consumer):
 
-    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping, batch_size=100):
+    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping, batch_size=5):
         """
         Initializes the SQLConsumer.
 
@@ -336,6 +336,7 @@ class SQLConsumer(Consumer):
             logging.error(f"SQLConsumer encountered an error while consuming records: {e}")
             METRICS["errors"].inc()
             self.error = True
+
         finally:
             # Insert any remaining records in the batch
             if self.batch:
