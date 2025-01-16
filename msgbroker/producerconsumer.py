@@ -333,7 +333,7 @@ class SQLConsumer(Consumer):
                 success=False,
             )
             logging.error(f"SQLConsumer encountered an error while consuming records: {e}")
-            self.METRICS["errors"].inc()
+            METRICS["errors"].inc()
             self.error = True
         finally:
             # Insert any remaining records in the batch
@@ -379,7 +379,7 @@ class SQLConsumer(Consumer):
                 success=False,
             )
             logging.error(f"Error processing record: {e}")
-            self.METRICS["errors"].inc()
+            METRICS["errors"].inc()
 
     @METRICS["batch_insert_time"].time()
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
@@ -423,7 +423,7 @@ class SQLConsumer(Consumer):
                     success=True,
                 )
                 logging.info(f"Batch of {len(self.batch)} records inserted successfully.")
-                self.METRICS["records_processed"].inc(len(self.batch))
+                METRICS["records_processed"].inc(len(self.batch))
                 self.batch.clear()
         except Exception as e:
             self.logger.log_job(
@@ -438,7 +438,7 @@ class SQLConsumer(Consumer):
             )
             logging.error(f"Failed to insert batch: {e}")
             self.conn.rollback()
-            self.METRICS["errors"].inc()
+            METRICS["errors"].inc()
             self.error = True
             raise
 
@@ -475,7 +475,8 @@ class SQLConsumer(Consumer):
                 error_message=str(e),
             )
             logging.error(f"Error finalizing consumer for {self.producer.artifact_name}: {e}")
-            self.METRICS["errors"].inc()
+            METRICS["errors"].inc()
         finally:
             self.conn.close()
             logging.info(f"Database connection closed for consumer of {self.producer.artifact_name}.")
+

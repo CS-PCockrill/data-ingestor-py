@@ -416,6 +416,7 @@ class FileProcessor:
                     raise
                 finally:
                     # Signal the end of production
+                    producer.signal_done()
                     all_workers_done.set()
 
             producer_thread = Thread(target=producer_task)
@@ -437,8 +438,7 @@ class FileProcessor:
 
             # Wait for producer and consumer to finish
             producer_thread.join()
-            all_workers_done.wait()
-            consumer.signal_done()  # Notify the consumer of end-of-production
+            all_workers_done.wait()  # Ensure production has fully stopped before finalizing
             consumer_thread.join()
 
             logging.info("Processing completed successfully.")
