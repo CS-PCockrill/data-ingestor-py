@@ -213,8 +213,8 @@ class SQLLogger(Logger):
             parameter_values = tuple(parameters.values())
 
             # Log the query and parameters for debugging
-            logging.debug(f"Generated Query: {update_query}")
-            logging.debug(f"Parameters: {parameter_values}")
+            logging.info(f"======Generated Query: {update_query}")
+            logging.info(f"======Parameters: {parameter_values}")
 
             # Execute the query
             self._execute_query(update_query, parameter_values)
