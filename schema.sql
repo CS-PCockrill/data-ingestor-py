@@ -5,6 +5,7 @@ DROP TABLE IF EXISTS error_definitions;
 
 -- Create the sflw_recs table
 CREATE TABLE sflw_recs (
+    "id" SERIAL PRIMARY KEY,
     "user" VARCHAR(255),                -- User who created the entry
     "dt_created" BIGINT,                -- Timestamp when the entry was created
     "dt_submitted" BIGINT,              -- Timestamp when the entry was submitted
