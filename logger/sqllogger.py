@@ -184,7 +184,7 @@ class SQLLogger(Logger):
             Exception: Propagates database exceptions for error handling.
         """
         # Build the query using parameter keys
-        insert_query = self.query_builder.build_insert_query(parameters.keys())
+        insert_query = self.query_builder.build_insert_query(parameters.keys(), batch=False)
 
         # Convert parameters to tuple (ensure consistent order with .keys())
         parameter_tuple = tuple(parameters.values())
