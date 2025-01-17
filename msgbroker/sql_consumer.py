@@ -88,6 +88,11 @@ class SQLConsumer(Consumer):
             record (dict): Record to process.
         """
         try:
+            job_id = self.logger.log_job(
+                symbol="GS2001W",
+                job_name="Transform Record",
+                artifact_name=self.producer.artifact_name,
+            )
             transformed_record = {
                 db_column: record.get(json_key)
                 for json_key, db_column in self.key_column_mapping.items()
@@ -99,6 +104,7 @@ class SQLConsumer(Consumer):
                 symbol="GS2001W",
                 job_name="Transform Record",
                 artifact_name=self.producer.artifact_name,
+                job_id=job_id,
                 success=True,
             )
         except Exception as e:
@@ -107,6 +113,7 @@ class SQLConsumer(Consumer):
                 job_name="Transform Record",
                 artifact_name=self.producer.artifact_name,
                 error_message=str(e),
+                job_id=job_id,
                 success=False,
             )
             logging.error(f"Error processing record: {e}")
