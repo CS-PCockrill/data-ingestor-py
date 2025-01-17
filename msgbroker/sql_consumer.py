@@ -5,7 +5,7 @@ from psycopg2.extras import execute_values
 from tenacity import stop_after_attempt, retry, wait_exponential
 
 from config.config import METRICS
-from msgbroker.producerconsumer import Consumer
+from msgbroker.producer_consumer import Consumer
 
 
 class SQLConsumer(Consumer):

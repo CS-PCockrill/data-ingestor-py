@@ -1,4 +1,5 @@
 {
+  "interfaceID": "MIST",
   "interfaceType": "MistAMS JSON/XML File",
   "type": "postgresql",
   "tableName": "SFLW_RECS",

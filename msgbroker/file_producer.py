@@ -4,7 +4,7 @@ from queue import Queue
 import xml.etree.ElementTree as ET
 
 from config.config import METRICS
-from msgbroker.producerconsumer import Producer
+from msgbroker.producer_consumer import Producer
 
 
 class FileProducer(Producer):

@@ -3,7 +3,7 @@ import argparse
 import logging
 import os
 from config.config import INTERFACE_IDS
-from helpers import move_file_to_folder, load_json_mapping
+from helpers import load_json_mapping
 
 
 def load_excel_file(file_path):
@@ -134,7 +134,7 @@ if __name__ == "__main__":
 
             # Write data to CSV
             write_data_to_csv(data, output_csv)
-            move_file_to_folder(file_path, output_directory)
+            # move_file_to_folder(file_path, output_directory)
 
             logging.info(f"File successfully processed and saved to: {output_csv}")
         except Exception as e:

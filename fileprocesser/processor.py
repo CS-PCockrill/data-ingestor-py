@@ -3,7 +3,7 @@ from threading import Thread, Event
 import logging
 
 class Processor:
-    def __init__(self, logger):
+    def __init__(self, logger=None):
         self.logger = logger
 
     @METRICS["file_processing_time"].time()
@@ -64,3 +64,6 @@ class Processor:
             raise
         finally:
             producer.close()
+
+    def process_files(self, files, producer=None):
+        pass

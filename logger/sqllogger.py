@@ -5,8 +5,10 @@ import socket
 
 import logging.handlers
 from prometheus_client import Counter, Histogram
-from db.querybuilder import QueryBuilder
-from errors.errorresolver import ErrorResolver
+
+from logger.logger import Logger
+from db.query_builder import QueryBuilder
+from errors.error_resolver import ErrorResolver
 
 # Prometheus metrics for observability
 LOG_DB_WRITE_SUCCESS = Counter("log_db_write_success", "Number of successful DB writes")
@@ -69,7 +71,7 @@ class LoggerContext:
         )
 
 
-class SQLLogger:
+class SQLLogger(Logger):
     """
     Handles database logging operations with fallback mechanisms for error resilience.
 
