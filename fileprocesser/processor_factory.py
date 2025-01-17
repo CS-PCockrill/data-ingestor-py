@@ -29,29 +29,6 @@ class ProcessorFactory:
             raise ValueError(f"Interface ID '{interface_id}' is not registered.")
         return cls._interface_configs[interface_id]
 
-    # @classmethod
-    # def create_logger(cls, interface_id, connection_manager, logger_context):
-    #     """
-    #     Create an instance of the logger for a given interface ID.
-    #
-    #     Args:
-    #         interface_id (str): The interface ID.
-    #         connection_manager: The database connection manager.
-    #         logger_context: The context for logging.
-    #
-    #     Returns:
-    #         Logger: An instance of the logger.
-    #
-    #     Raises:
-    #         ValueError: If the interface ID or logger class is not registered.
-    #     """
-    #     if interface_id not in cls._logger_classes:
-    #         raise ValueError(f"No logger registered for interface ID '{interface_id}'.")
-    #     logger_class = cls._logger_classes[interface_id]
-    #     if logger_class is None:
-    #         raise ValueError(f"No logger class defined for interface ID '{interface_id}'.")
-    #     return logger_class(connection_manager, logger_context)
-
     @classmethod
     def register_processor(cls, interface_ids, control_file_path, processor_class, file_extensions):
         """

@@ -150,6 +150,9 @@ class SQLConsumer(Consumer):
                 query = self.query_builder.build_insert_query(columns)
                 values = [[record[col] for col in columns] for record in self.batch]
 
+                logging.info("Values in batch: %s", values)
+                logging.info("Values in query: %s", query)
+
                 # Execute the query with the batch values
                 execute_values(cur, query, values)
                 self.conn.commit()
