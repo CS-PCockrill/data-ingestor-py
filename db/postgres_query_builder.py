@@ -7,7 +7,7 @@ class PostgresQueryBuilder(QueryBuilder):
         for SQL safety and a placeholder for batch values.
         """
         # Wrap each column name in double quotes
-        col_list = ", ".join(f'"{col}"' for col in columns)
+        col_list = ", ".join(f'"{col.lower()}"' for col in columns)
         # Generate the query
         return f"INSERT INTO {self.table_name} ({col_list}) VALUES %s RETURNING id;"
 
