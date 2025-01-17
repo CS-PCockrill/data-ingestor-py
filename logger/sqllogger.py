@@ -207,11 +207,18 @@ class SQLLogger(Logger):
         Raises:
             Exception: Propagates database exceptions for error handling.
         """
-        update_query = self.query_builder.build_update_query(parameters.keys())
-        logging.debug(f"Executing update with query: {update_query}, Parameters: {parameters}")
-
         try:
-            self._execute_query(update_query, tuple(parameters.values()))
+            # Generate query with dynamic column placeholders
+            update_query = self.query_builder.build_update_query(parameters.keys())
+            parameter_values = tuple(parameters.values())
+
+            # Log the query and parameters for debugging
+            logging.debug(f"Generated Query: {update_query}")
+            logging.debug(f"Parameters: {parameter_values}")
+
+            # Execute the query
+            self._execute_query(update_query, parameter_values)
+            logging.info("Successfully updated the job.")
         except Exception as e:
             logging.error(f"Failed to update job: {e}")
             raise
