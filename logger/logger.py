@@ -2,13 +2,14 @@ from abc import ABC, abstractmethod
 
 class Logger(ABC):
     @abstractmethod
-    def log_job(self, message, level="info"):
+    def log_job(self, *args, symbol, **kwargs):
         """
         Abstract method for logging a message.
 
         Args:
-            message (str): The message to log.
-            level (str): The logging level (e.g., "info", "error").
+            *args: Positional arguments for the error resolver.
+            symbol (str): Unique identifier for the log type (e.g., error or info).
+            **kwargs: Additional metadata fields for the log.
         """
         pass
 
