@@ -23,10 +23,10 @@ class PostgresQueryBuilder(QueryBuilder):
             values_placeholder = "%s"
         else:
             # Use positional placeholders for single values
-            values_placeholder = ", ".join(["%s"] * len(columns))
+            values_placeholder = f"({', '.join(['%s'] * len(columns))})"
 
         # Generate the query
-        return f"INSERT INTO {self.table_name} ({col_list}) VALUES ({values_placeholder}) RETURNING id;"
+        return f"INSERT INTO {self.table_name} ({col_list}) VALUES {values_placeholder} RETURNING id;"
 
     def build_update_query(self, columns, condition="id = %s"):
         set_clause = ", ".join([f"{col} = %s" for col in columns])
