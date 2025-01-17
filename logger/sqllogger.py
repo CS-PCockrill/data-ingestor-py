@@ -99,66 +99,43 @@ class SQLLogger(Logger):
 
     def _build_insert_parameters(self, symbol, severity, message, current_time, host_name, **kwargs):
         """
-        Constructs the parameter tuple for inserting a new log into the database.
-
-        Args:
-            symbol (str): Unique identifier for the log type (e.g., error or info).
-            severity (str): Severity level of the log (e.g., I, W, E).
-            message (str): Descriptive message for the log.
-            current_time (datetime): Timestamp of the log creation.
-            host_name (str): Hostname of the machine where the log originated.
-            **kwargs: Additional metadata fields for the log.
-
-        Returns:
-            tuple: Parameter tuple ready for SQL insertion.
+        Constructs a dictionary of parameters for inserting a new log into the database.
         """
-        parameters = [(
-            kwargs.get("job_name", "Job"),  # Default job name if not provided
-            kwargs.get("job_type", self.context.interface_type),  # Job type from context
-            symbol,  # Unique log identifier
-            severity,  # Log severity
-            "IN PROGRESS",  # Default status for new logs
-            current_time,  # Current timestamp
-            message,  # Log message
-            kwargs.get("error_message"),  # Error details, if any
-            kwargs.get("query"),  # SQL query associated with the log, if applicable
-            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
-            kwargs.get("artifact_name"),  # Artifact or job identifier
-            self.context.user_id,  # User ID from context
-            host_name,  # Hostname
-            self.context.table_name,  # Main table being logged
-        )]
+        parameters = {
+            "job_name": kwargs.get("job_name", "Job"),  # Default job name if not provided
+            "job_type": kwargs.get("job_type", self.context.interface_type),  # Job type from context
+            "symb": symbol,  # Unique log identifier
+            "severity": severity,  # Log severity
+            "status": "IN PROGRESS",  # Default status for new logs
+            "start_time": current_time,  # Current timestamp
+            "message": message,  # Log message
+            "error_message": kwargs.get("error_message"),  # Error details, if any
+            "query": kwargs.get("query"),  # SQL query associated with the log, if applicable
+            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
+            "artifact_name": kwargs.get("artifact_name"),  # Artifact or job identifier
+            "user_id": self.context.user_id,  # User ID from context
+            "host_name": host_name,  # Hostname
+            "table_name": self.context.table_name,  # Main table being logged
+        }
 
-        # Debug log to inspect parameters being built
         logging.debug(f"Insert parameters constructed: {parameters}")
         return parameters
 
     def _build_update_parameters(self, symbol, severity, message, current_time, **kwargs):
         """
-        Constructs the parameter tuple for updating an existing log entry in the database.
-
-        Args:
-            symbol (str): Unique identifier for the log type (e.g., error or info).
-            severity (str): Severity level of the log (e.g., INFO, WARNING, ERROR).
-            message (str): Descriptive message for the log.
-            current_time (datetime): Timestamp of the log update.
-            **kwargs: Additional metadata fields for the log.
-
-        Returns:
-            tuple: Parameter tuple ready for SQL update.
+        Constructs a dictionary of parameters for updating an existing log entry in the database.
         """
-        # Constructing the update parameters
-        parameters = (
-            "SUCCESS" if kwargs.get("success") else "FAILURE",  # Log status based on success flag
-            current_time,  # Current timestamp
-            message,  # Log message
-            kwargs.get("error_message"),  # Error details, if any
-            kwargs.get("query"),  # SQL query associated with the log
-            json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
-            self.context.user_id,  # User ID from context
-            self.context.table_name,  # Main table being logged
-            kwargs.get("job_id"),  # Job ID for the update
-        )
+        parameters = {
+            "status": "SUCCESS" if kwargs.get("success") else "FAILURE",  # Log status
+            "end_time": current_time,  # Current timestamp
+            "message": message,  # Log message
+            "error_message": kwargs.get("error_message"),  # Error details, if any
+            "query": kwargs.get("query"),  # SQL query associated with the log
+            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
+            "user_id": self.context.user_id,  # User ID from context
+            "table_name": self.context.table_name,  # Main table being logged
+            "job_id": kwargs.get("job_id"),  # Job ID for the update
+        }
 
         logging.debug(f"Update parameters constructed: {parameters}")
         return parameters
@@ -198,25 +175,16 @@ class SQLLogger(Logger):
         Inserts a new log entry into the database.
 
         Args:
-            parameters (tuple): Parameters for the insert query.
+            parameters (dict): Parameters for the insert query.
 
         Returns:
             int: Generated ID of the inserted log entry.
-
-        Raises:
-            Exception: Propagates database exceptions for error handling.
         """
-        insert_query = self.query_builder.build_insert_query([
-            "job_name", "job_type", "symb", "severity", "status", "start_time",
-            "message", "error_message", "query", "values", "artifact_name",
-            "user_id", "host_name", "table_name"
-        ])
-
+        insert_query = self.query_builder.build_insert_query(parameters.keys())
         logging.debug(f"Executing insert with query: {insert_query}, Parameters: {parameters}")
 
         try:
-            logging.info(f"Executing insert with query: {insert_query}, Parameters: {parameters}")
-            return self._execute_query(insert_query, parameters)
+            return self._execute_query(insert_query, tuple(parameters.values()))
         except Exception as e:
             logging.error(f"Failed to insert job: {e}")
             raise
@@ -226,20 +194,16 @@ class SQLLogger(Logger):
         Updates an existing log entry in the database.
 
         Args:
-            parameters (tuple): Parameters for the update query.
+            parameters (dict): Parameters for the update query.
 
         Raises:
             Exception: Propagates database exceptions for error handling.
         """
-        update_query = self.query_builder.build_update_query([
-            "status", "end_time", "message", "error_message",
-            "query", "values", "user_id", "table_name"
-        ])
-
+        update_query = self.query_builder.build_update_query(parameters.keys())
         logging.debug(f"Executing update with query: {update_query}, Parameters: {parameters}")
 
         try:
-            self._execute_query(update_query, parameters)
+            self._execute_query(update_query, tuple(parameters.values()))
         except Exception as e:
             logging.error(f"Failed to update job: {e}")
             raise
