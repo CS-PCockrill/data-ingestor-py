@@ -112,7 +112,7 @@ class SQLLogger(Logger):
         Returns:
             tuple: Parameter tuple ready for SQL insertion.
         """
-        parameters = (
+        parameters = [(
             kwargs.get("job_name", "Job"),  # Default job name if not provided
             kwargs.get("job_type", self.context.interface_type),  # Job type from context
             symbol,  # Unique log identifier
@@ -127,7 +127,7 @@ class SQLLogger(Logger):
             self.context.user_id,  # User ID from context
             host_name,  # Hostname
             self.context.table_name,  # Main table being logged
-        )
+        )]
 
         # Debug log to inspect parameters being built
         logging.debug(f"Insert parameters constructed: {parameters}")
