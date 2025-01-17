@@ -208,9 +208,16 @@ class SQLLogger(Logger):
             Exception: Propagates database exceptions for error handling.
         """
         try:
+            # Ensure 'job_id' is included for the WHERE clause
+            if "job_id" not in parameters:
+                raise ValueError("Missing 'job_id' in parameters for WHERE clause.")
+
             # Generate query with dynamic column placeholders
             update_query = self.query_builder.build_update_query(parameters.keys())
-            parameter_values = tuple(parameters.values())
+
+            # Move job_id to the end of the parameter values
+            job_id = parameters.pop("job_id")
+            parameter_values = tuple(parameters.values()) + (job_id,)
 
             # Log the query and parameters for debugging
             logging.info(f"======Generated Query: {update_query}")

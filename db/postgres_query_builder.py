@@ -29,6 +29,6 @@ class PostgresQueryBuilder(QueryBuilder):
         return f"INSERT INTO {self.table_name} ({col_list}) VALUES {values_placeholder} RETURNING id;"
 
     def build_update_query(self, columns, condition="id = %s"):
-        set_clause = ", ".join([f"{col} = %s" for col in columns])
-        return f"UPDATE {self.table_name} SET {set_clause} WHERE {condition}"
+        assignments = ", ".join(f'"{col.lower()}" = %s' for col in columns if col != "job_id")
+        return f"UPDATE {self.table_name} SET {assignments} WHERE {condition}"
 
