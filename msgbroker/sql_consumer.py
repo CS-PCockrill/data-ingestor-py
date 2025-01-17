@@ -51,7 +51,7 @@ class SQLConsumer(Consumer):
                 self.process_record(record)
 
                 if len(self.batch) >= self.batch_size:
-                    self._insert_batch(job_id)
+                    self._insert_batch()
 
         except Exception as e:
             self.logger.log_job(
