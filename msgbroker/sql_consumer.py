@@ -69,7 +69,7 @@ class SQLConsumer(Consumer):
         finally:
             # Insert any remaining records in the batch
             if self.batch:
-                self._insert_batch(job_id)
+                self._insert_batch()
 
             # Mark the job as completed
             self.logger.log_job(
@@ -114,16 +114,13 @@ class SQLConsumer(Consumer):
 
     @METRICS["batch_insert_time"].time()
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
-    def _insert_batch(self, job_id):
+    def _insert_batch(self):
         """
         Inserts the current batch of records into the database.
-
-        Args:
-            job_id (str): The ID of the current log job for batch insertion.
         """
         try:
             if not self.batch:
-                self.logger.log_job(
+                job_id = self.logger.log_job(
                     symbol="GS2001W",
                     job_name=f"Batch Insert for {self.producer.artifact_name}",
                     artifact_name=self.producer.artifact_name,
@@ -132,6 +129,12 @@ class SQLConsumer(Consumer):
                 )
                 logging.warning("Insert batch called with no records to process.")
                 return
+
+            job_id = self.logger.log_job(
+                symbol="GS2001W",
+                job_name=f"Batch Insert for {self.producer.artifact_name}",
+                artifact_name=self.producer.artifact_name,
+            )
 
             with self.conn.cursor() as cur:
                 columns = self.batch[0].keys()
