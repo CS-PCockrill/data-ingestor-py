@@ -520,7 +520,7 @@ class FileProcessor(Processor):
 
                 # Invoke the processing pipeline
                 # Call parent class _process method
-                super()._process(producer=producer, consumer=consumer, key_column_mapping=schema)
+                super().process(producer=file_producer, consumer=consumer, key_column_mapping=schema)
 
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:

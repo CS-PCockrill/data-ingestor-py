@@ -7,7 +7,7 @@ class Processor:
         self.logger = logger
 
     @METRICS["file_processing_time"].time()
-    def _process(self, producer, consumer, key_column_mapping=None):
+    def process(self, producer, consumer, key_column_mapping=None):
         """
         Processes records using producer and consumer components.
 
