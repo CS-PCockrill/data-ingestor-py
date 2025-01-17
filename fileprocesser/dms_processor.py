@@ -13,7 +13,7 @@ class DMSProcessor(Processor):
             config (dict): Configuration settings for processing.
         """
         # Call the parent Processor's init (if applicable)
-        super().__init__()
+        super().__init__(logger)
 
         # Initialize instance-specific attributes
         self.config = config

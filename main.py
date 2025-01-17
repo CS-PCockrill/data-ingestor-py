@@ -2,15 +2,13 @@ import argparse
 import os.path
 
 import logging
-# INTERFACE_IDS is a key value list of interface IDs to their respective control config file path
-from config.config import INTERFACE_IDS
 from contextlib import contextmanager
 
 from fileprocesser.dms_processor import DMSProcessor
 from fileprocesser.file_processor import FileProcessor
-from fileprocesser.processor import Processor
 from fileprocesser.processor_factory import ProcessorFactory
 from helpers import load_json_mapping
+from logger.logger_factory import LoggerFactory
 from logger.sqllogger import SQLLogger
 
 # Configure logger
@@ -93,23 +91,38 @@ def get_files_to_process(config, file_arg, extensions):
         if any(f.endswith(ext) for ext in extensions)
     ]
 
-def register_interfaces():
-    ProcessorFactory.register_interface(
-        interface_ids=["mist", "mist-ams"],
-        control_file_path="interfaces/mist-ams/control-file.json",
-        processor_class=FileProcessor,
-        file_extensions=[".json", ".xml"],
-        logger_class=SQLLogger,
-    )
+def register_components():
+    INTERFACES = [
+        {
+            "interface_ids": {"mist", "mist-ams"},
+            "control_file_path": "interfaces/mist-ams/control-file.json",
+            "processor_class": FileProcessor,
+            "file_extensions": [".json", ".xml"],
+            "logger_class": SQLLogger,
+        },
+        {
+            "interface_ids": {"dms", "dms-test"},
+            "control_file_path": "interfaces/dms/control-file.json",
+            "processor_class": DMSProcessor,
+            "file_extensions": [".xlsx", ".xls"],
+            "logger_class": SQLLogger,
+        },
+    ]
 
-    ProcessorFactory.register_interface(
-        interface_ids=["dms", "dms-test"],
-        control_file_path="interfaces/dms/control-file.json",
-        processor_class=DMSProcessor,
-        file_extensions=[".xlsx", ".xls"],
-        logger_class=SQLLogger,
-    )
+    for interface in INTERFACES:
+        # Register loggers
+        LoggerFactory.register_logger(
+            interface["interface_ids"],
+            interface["logger_class"]
+        )
 
+        # Register processors
+        ProcessorFactory.register_processor(
+            interface["interface_ids"],
+            interface["control_file_path"],
+            interface["processor_class"],
+            interface["file_extensions"]
+        )
 
 @contextmanager
 def resource_manager(processor, logger):
@@ -138,7 +151,7 @@ def main():
     Main entry point for the script.
     """
     # 1. Register all interfaces
-    register_interfaces()
+    register_components()
 
     # 2. Parse command-line arguments
     args = parse_arguments()

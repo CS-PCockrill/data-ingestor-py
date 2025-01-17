@@ -1,7 +1,7 @@
 {
   "interfaceID": "MIST",
   "interfaceType": "MistAMS JSON/XML File",
-  "type": "postgresql",
+  "dbType": "postgres",
   "tableName": "SFLW_RECS",
   "logsTableName": "SS_LOGS",
   "outputDirectory": "interfaces/mist-ams/archive",

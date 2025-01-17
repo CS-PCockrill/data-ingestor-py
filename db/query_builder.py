@@ -4,10 +4,7 @@ class QueryBuilder:
         self.table_name = table_name
 
     def build_insert_query(self, columns):
-        column_list = ", ".join(columns)
-        placeholders = ", ".join(["%s"] * len(columns))
-        return f"INSERT INTO {self.table_name} ({column_list}) VALUES ({placeholders}) RETURNING id"
+        raise NotImplementedError("build_insert_query must be implemented in subclasses.")
 
-    def build_update_query(self, columns, condition="id = %s"):
-        set_clause = ", ".join([f"{col} = %s" for col in columns])
-        return f"UPDATE {self.table_name} SET {set_clause} WHERE {condition}"
+    def build_update_query(self, columns, condition="id = :id"):
+        raise NotImplementedError("build_update_query must be implemented in subclasses.")

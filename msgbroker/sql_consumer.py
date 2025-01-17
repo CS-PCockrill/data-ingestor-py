@@ -29,6 +29,7 @@ class SQLConsumer(Consumer):
         self.batch = []
         self.lock = Lock()
         self.conn = self.connection_manager.connect()
+        self.query_builder = self.connection_manager.get_query_builder(table_name)  # Get QueryBuilder from the connection manager
         self.error = False
 
     def consume(self):
@@ -144,15 +145,15 @@ class SQLConsumer(Consumer):
             )
 
             with self.conn.cursor() as cur:
+                # Generate the INSERT query using the QueryBuilder
                 columns = self.batch[0].keys()
-                query = 'INSERT INTO {} ({}) VALUES %s'.format(
-                    self.table_name,
-                    ', '.join('"{}"'.format(col.lower()) for col in columns)
-                )
+                query = self.query_builder.build_insert_query(columns)
                 values = [[record[col] for col in columns] for record in self.batch]
 
+                # Execute the query with the batch values
                 execute_values(cur, query, values)
                 self.conn.commit()
+                logging.info(f"Successfully inserted batch of {len(self.batch)} records into {self.table_name}.")
 
                 self.logger.log_job(
                     query=query,
@@ -163,7 +164,6 @@ class SQLConsumer(Consumer):
                     job_id=job_id,
                     success=True,
                 )
-                logging.info(f"Batch of {len(self.batch)} records inserted successfully.")
                 METRICS["records_processed"].inc(len(self.batch))
                 self.batch.clear()
         except Exception as e:

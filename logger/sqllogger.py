@@ -81,12 +81,13 @@ class SQLLogger(Logger):
     """
 
     def __init__(self, connection_manager, context):
+        super().__init__()
         self.connection_manager = connection_manager  # Connection manager instance
         self.conn = self.connection_manager.connect()  # Establish a connection
         self.context = context  # Logging context for metadata
 
         # Query builder for constructing SQL queries dynamically
-        self.query_builder = QueryBuilder(context.logs_table)
+        self.query_builder = self.connection_manager.get_query_builder(context.logs_table)
 
         # Error resolver for handling and classifying errors
         self.error_resolver = ErrorResolver(self.conn, context.error_table)
