@@ -102,22 +102,21 @@ class SQLLogger(Logger):
         Constructs a dictionary of parameters for inserting a new log into the database.
         """
         parameters = {
-            "job_name": kwargs.get("job_name", "Job"),  # Default job name if not provided
-            "job_type": kwargs.get("job_type", self.context.interface_type),  # Job type from context
-            "symb": symbol,  # Unique log identifier
-            "severity": severity,  # Log severity
-            "status": "IN PROGRESS",  # Default status for new logs
-            "start_time": current_time,  # Current timestamp
-            "message": message,  # Log message
-            "error_message": kwargs.get("error_message"),  # Error details, if any
-            "query": kwargs.get("query"),  # SQL query associated with the log, if applicable
-            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
-            "artifact_name": kwargs.get("artifact_name"),  # Artifact or job identifier
-            "user_id": self.context.user_id,  # User ID from context
-            "host_name": host_name,  # Hostname
-            "table_name": self.context.table_name,  # Main table being logged
+            "job_name": kwargs.get("job_name", "Job"),
+            "job_type": kwargs.get("job_type", self.context.interface_type),
+            "symb": symbol,
+            "severity": severity,
+            "status": "IN PROGRESS",
+            "start_time": current_time,
+            "message": message,
+            "error_message": kwargs.get("error_message"),
+            "query": kwargs.get("query"),
+            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
+            "artifact_name": kwargs.get("artifact_name"),
+            "user_id": self.context.user_id,
+            "host_name": host_name,
+            "table_name": self.context.table_name,
         }
-
         logging.debug(f"Insert parameters constructed: {parameters}")
         return parameters
 
@@ -156,13 +155,14 @@ class SQLLogger(Logger):
         """
         try:
             with self.conn.cursor() as cursor:
+                # Execute the query
                 cursor.execute(query, parameters)
 
+                # Handle "RETURNING id" for insert queries
                 if query.strip().lower().startswith("insert"):
-                    # Return the generated ID for insert queries
                     return cursor.fetchone()[0]
 
-                # Commit changes for non-insert queries
+                # Commit changes
                 self.conn.commit()
 
             logging.info(f"Successfully executed query: {query}")
@@ -179,12 +179,20 @@ class SQLLogger(Logger):
 
         Returns:
             int: Generated ID of the inserted log entry.
+
+        Raises:
+            Exception: Propagates database exceptions for error handling.
         """
+        # Build the query using parameter keys
         insert_query = self.query_builder.build_insert_query(parameters.keys())
-        logging.debug(f"Executing insert with query: {insert_query}, Parameters: {parameters}")
+
+        # Convert parameters to tuple (ensure consistent order with .keys())
+        parameter_tuple = tuple(parameters.values())
+
+        logging.debug(f"Executing insert with query: {insert_query}, Parameters: {parameter_tuple}")
 
         try:
-            return self._execute_query(insert_query, tuple(parameters.values()))
+            return self._execute_query(insert_query, parameter_tuple)
         except Exception as e:
             logging.error(f"Failed to insert job: {e}")
             raise
