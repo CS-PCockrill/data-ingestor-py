@@ -1,10 +1,13 @@
 {
   "type": "postgresql",
+  "interfaceID": "DMS",
+  "interfaceType": "DMS Excel Templates",
   "tableName": "SFLW_RECS",
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",
   "errorDefinitionSourceType": "file",
   "errorDefinitionSourceLocation": "error_definitions",
+  "logsTableName": "SS_LOGS",
   "host": "localhost",
   "port": 5432,
   "database": "testdb",
