@@ -4,10 +4,11 @@ from threading import Thread, Lock, Event
 from prometheus_client import generate_latest
 
 from config.config import METRICS
+from fileprocesser.processor import Processor
 from msgbroker.file_producer import FileProducer
 from msgbroker.sql_consumer import SQLConsumer
 
-class FileProcessor:
+class FileProcessor(Processor):
 
     def __init__(self, connection_manager, logger, config):
         """
@@ -18,6 +19,7 @@ class FileProcessor:
             logger (SQLLogger): Handles logging operations.
             config (dict): Configuration settings for file processing.
         """
+        super().__init__(logger)
         self.connection_manager = connection_manager
         self.logger = logger
         self.config = config
@@ -390,65 +392,65 @@ class FileProcessor:
     #         # Increment error metrics
     #         self.METRICS["errors"].inc()
 
-    @METRICS["file_processing_time"].time()  # Track total file processing time
-    def _process(self, producer, consumer, key_column_mapping=None):
-        """
-        Processes records using producer and consumer components.
-
-        Args:
-            producer (Producer): The producer instance for generating records.
-            consumer (Consumer): The consumer instance for processing records.
-            key_column_mapping (dict): Mapping of JSON keys to database column names (optional).
-
-        Behavior:
-            - Uses the provided producer to generate records.
-            - Passes records from the producer to the consumer for processing.
-        """
-        all_workers_done = Event()
-
-        try:
-            # Start the producer task
-            def producer_task():
-                try:
-                    producer.produce_from_source()  # The producer generates and queues records
-                except Exception as e:
-                    logging.error(f"Producer encountered an error: {e}")
-                    METRICS["errors"].inc()
-                    raise
-                finally:
-                    # Signal the end of production
-                    producer.signal_done()
-                    all_workers_done.set()
-
-            producer_thread = Thread(target=producer_task)
-            producer_thread.start()
-
-            # Start the consumer task
-            def consumer_task():
-                try:
-                    consumer.consume()  # The consumer processes records from the producer
-                except Exception as e:
-                    logging.error(f"Consumer encountered an error: {e}")
-                    METRICS["errors"].inc()
-                    raise
-                finally:
-                    consumer.finalize()  # Finalize consumer after consumption
-
-            consumer_thread = Thread(target=consumer_task)
-            consumer_thread.start()
-
-            # Wait for producer and consumer to finish
-            producer_thread.join()
-            all_workers_done.wait()  # Ensure production has fully stopped before finalizing
-            consumer_thread.join()
-
-            logging.info("Processing completed successfully.")
-        except Exception as e:
-            logging.error(f"Failed to process records: {e}")
-            METRICS["errors"].inc()
-            raise
-        finally:
-            producer.close()  # Ensure producer resources are released
+    # @METRICS["file_processing_time"].time()  # Track total file processing time
+    # def _process(self, producer, consumer, key_column_mapping=None):
+    #     """
+    #     Processes records using producer and consumer components.
+    #
+    #     Args:
+    #         producer (Producer): The producer instance for generating records.
+    #         consumer (Consumer): The consumer instance for processing records.
+    #         key_column_mapping (dict): Mapping of JSON keys to database column names (optional).
+    #
+    #     Behavior:
+    #         - Uses the provided producer to generate records.
+    #         - Passes records from the producer to the consumer for processing.
+    #     """
+    #     all_workers_done = Event()
+    #
+    #     try:
+    #         # Start the producer task
+    #         def producer_task():
+    #             try:
+    #                 producer.produce_from_source()  # The producer generates and queues records
+    #             except Exception as e:
+    #                 logging.error(f"Producer encountered an error: {e}")
+    #                 METRICS["errors"].inc()
+    #                 raise
+    #             finally:
+    #                 # Signal the end of production
+    #                 producer.signal_done()
+    #                 all_workers_done.set()
+    #
+    #         producer_thread = Thread(target=producer_task)
+    #         producer_thread.start()
+    #
+    #         # Start the consumer task
+    #         def consumer_task():
+    #             try:
+    #                 consumer.consume()  # The consumer processes records from the producer
+    #             except Exception as e:
+    #                 logging.error(f"Consumer encountered an error: {e}")
+    #                 METRICS["errors"].inc()
+    #                 raise
+    #             finally:
+    #                 consumer.finalize()  # Finalize consumer after consumption
+    #
+    #         consumer_thread = Thread(target=consumer_task)
+    #         consumer_thread.start()
+    #
+    #         # Wait for producer and consumer to finish
+    #         producer_thread.join()
+    #         all_workers_done.wait()  # Ensure production has fully stopped before finalizing
+    #         consumer_thread.join()
+    #
+    #         logging.info("Processing completed successfully.")
+    #     except Exception as e:
+    #         logging.error(f"Failed to process records: {e}")
+    #         METRICS["errors"].inc()
+    #         raise
+    #     finally:
+    #         producer.close()  # Ensure producer resources are released
 
     def _get_schema_and_tag(self, file_type):
         """
@@ -517,10 +519,9 @@ class FileProcessor:
                 )
 
                 # Invoke the processing pipeline
-                self._process(producer=file_producer, consumer=consumer, key_column_mapping=schema)
+                # Call parent class _process method
+                super()._process(producer=producer, consumer=consumer, key_column_mapping=schema)
 
-                # sql_consumer = SQLConsumer(producer, self.connection_manager, key_column_mapping)
-                # self._process(producer=file_producer, consumer_cls=SQLConsumer, key_column_mapping=schema)
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
             except Exception as e:
                 logging.error(f"File processing failed for {file_path}: {e}")
