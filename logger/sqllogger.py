@@ -215,6 +215,7 @@ class SQLLogger(Logger):
         logging.debug(f"Executing insert with query: {insert_query}, Parameters: {parameters}")
 
         try:
+            logging.info(f"Executing insert with query: {insert_query}, Parameters: {parameters}")
             return self._execute_query(insert_query, parameters)
         except Exception as e:
             logging.error(f"Failed to insert job: {e}")
