@@ -17,6 +17,7 @@ class FileProducer(Producer):
         self.file_path = file_path
         self.file_type = file_type
         self.schema_tag = schema_tag
+        self.artifact_name = file_path
 
     def set_source(self, file_path, file_type, schema_tag):
         """
