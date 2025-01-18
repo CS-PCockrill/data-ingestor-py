@@ -104,10 +104,11 @@ def register_components():
             interface["logger_class"],  # Logger class to register
         )
 
-        # Register the producer with the factory
-        ProducerFactory.register_producer(interface["interface_ids"], interface["producer_class"])
-        # Register the consumer with the factory
-        ConsumerFactory.register_consumer(interface["interface_ids"], interface["consumer_class"])
+        for id in interface["interface_ids"]:
+            # Register the producer with the factory
+            ProducerFactory.register_producer(id, interface["producer_class"])
+            # Register the consumer with the factory
+            ConsumerFactory.register_consumer(id, interface["consumer_class"])
 
         # Register the processor class for the specified interface IDs
         ProcessorFactory.register_processor(
