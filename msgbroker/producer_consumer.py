@@ -22,7 +22,7 @@ class Producer(ABC):
         pass
 
 class Consumer(ABC):
-    def __init__(self, producer):
+    def __init__(self, producer, **kwargs):
         """
                 Abstract base class for producers.
 
