@@ -4,6 +4,7 @@ import os.path
 import logging
 from contextlib import contextmanager
 
+from db.connection_manager import PostgresConnectionManager
 from fileprocesser.dms_processor import DMSProcessor
 from fileprocesser.file_processor import FileProcessor
 from fileprocesser.processor_factory import ProcessorFactory
@@ -299,9 +300,10 @@ def main():
 
     # Update the consumerConfig dynamically
     config["consumerConfig"].update({
+        "logger": None,
         "table_name": config.get("tableName"),
         "producer": None,
-        "connection_manager": None,
+        "connection_manager": PostgresConnectionManager(config),
         "key_column_mapping": config.get("jsonSchema"),
         "batch_size": 5,
     })

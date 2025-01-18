@@ -23,6 +23,15 @@ class Producer(ABC):
 
 class Consumer(ABC):
     def __init__(self, producer):
+        """
+                Abstract base class for producers.
+
+                Args:
+                    **kwargs: Dynamic attributes for the producer.
+                """
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
         self.producer = producer
         self.artifact_name = producer.artifact_name  # Inherit artifact name from producer
 
