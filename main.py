@@ -10,6 +10,8 @@ from fileprocesser.processor_factory import ProcessorFactory
 from helpers import load_json_mapping
 from logger.logger_factory import LoggerFactory
 from logger.sqllogger import SQLLogger
+from msgbroker.consumer_factory import ConsumerFactory
+from msgbroker.producer_factory import ProducerFactory
 
 # Configure logger
 logging.basicConfig(
@@ -201,7 +203,7 @@ def main():
     """
     Main entry point for the script.
     """
-    # 1. Register all interfaces
+    # 1. Register all components
     register_components()
 
     # 2. Parse command-line arguments
@@ -213,28 +215,35 @@ def main():
         logging.error(f"Interface ID '{interface_id}' is not registered.")
         raise ValueError(f"Invalid Interface ID: {interface_id}")
 
+    # Load the configuration for the interface
     control_file_path = ProcessorFactory.get_control_file_path(interface_id)
     config = load_json_mapping(control_file_path)
 
-    # 4. Retrieve the processor and file extensions
+    # Determine source type and invoke processor
     try:
+        # Create the processor
         processor = ProcessorFactory.create_processor(interface_id, config)
+
+        # Check for supported file extensions to determine source type
         file_extensions = ProcessorFactory.get_supported_file_extensions(interface_id)
-    except ValueError as e:
-        logging.error(f"Error retrieving processor or file extensions: {e}")
-        raise
 
-    # 5. Determine files to process
-    files = get_files_to_process(config, args.file, extensions=file_extensions)
-    if not files:
-        logging.error(f"No files with valid extensions found in {config['inputDirectory']}.")
-        raise ValueError(f"No files to process in {config['inputDirectory']}.")
+        if file_extensions:
+            # Handle file-based source
+            files = get_files_to_process(config, args.file, extensions=file_extensions)
+            if not files:
+                logging.error(f"No files with valid extensions found in {config['inputDirectory']}.")
+                raise ValueError(f"No files to process in {config['inputDirectory']}.")
+            processor.process_files(files)
+        else:
+            # Handle non-file-based source and destination
+            producer = ProducerFactory.create_producer(interface_id, **config.get("producerConfig", {}))
+            consumer = ConsumerFactory.create_consumer(interface_id, **config.get("consumerConfig", {}))
+            processor.process(producer=producer, consumer=consumer)
 
-    # 6. Process files using the selected processor
-    try:
-        processor.process_files(files)
+        # Write metrics if supported
         if hasattr(processor, "write_metrics_to_file"):
             processor.write_metrics_to_file("prometheus_metrics.txt")
+
     except Exception as e:
         logging.error(f"An error occurred during processing: {e}")
         raise
@@ -243,6 +252,7 @@ def main():
             processor.close()
 
     logging.info("Processing completed successfully.")
+
 
 
 if __name__ == "__main__":
