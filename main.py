@@ -291,7 +291,7 @@ def main():
 
     # Update the producerConfig to include input directory or specific file
     config["producerConfig"].update({
-        "file_path": args.file,
+        "file_path": os.path.join(config["inputDirectory"], args.file),
         "file_type": "json",
         "schema_tag": "jsonSchema",
         # "inputDirectory": config.get("inputDirectory"),
@@ -317,6 +317,7 @@ def main():
 
         # Update the consumerConfig to reference the created producer
         config["consumerConfig"].update({"producer": producer})
+        config["consumerConfig"].update({"logger": processor.logger})
 
         # Create consumer dynamically
         consumer = ConsumerFactory.create_consumer(interface_id, **config["consumerConfig"])
