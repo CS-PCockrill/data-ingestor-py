@@ -1,7 +1,16 @@
 from abc import ABC, abstractmethod
 
 class Producer(ABC):
-    def __init__(self):
+    def __init__(self, **kwargs):
+        """
+        Abstract base class for producers.
+
+        Args:
+            **kwargs: Dynamic attributes for the producer.
+        """
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
         self.artifact_name = None  # Common field for all producers
 
     @abstractmethod

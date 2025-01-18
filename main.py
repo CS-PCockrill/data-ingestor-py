@@ -290,11 +290,11 @@ def main():
 
     # Update the producerConfig to include input directory or specific file
     config["producerConfig"].update({
-        "schema_tag": "jsonSchema",
-        "file_type": "json",
         "file_path": args.file,
-        "inputDirectory": config.get("inputDirectory"),
-        "supportedExtensions": config.get("supportedExtensions", [".json", ".xml"])
+        "file_type": "json",
+        "schema_tag": "jsonSchema",
+        # "inputDirectory": config.get("inputDirectory"),
+        # "supportedExtensions": config.get("supportedExtensions", [".json", ".xml"])
     })
 
     # Update the consumerConfig dynamically
