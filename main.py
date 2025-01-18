@@ -20,6 +20,88 @@ logging.basicConfig(
     ]
 )
 
+def register_components():
+    """
+    Registers components (loggers, processors) for different interfaces in the ingestion system.
+
+    This function sets up modular components for data ingestion by associating specific
+    interfaces with their corresponding processors, loggers, control files, and supported file extensions.
+
+    Structure:
+    - INTERFACES defines the configuration for each interface.
+    - Each interface has:
+        - `interface_ids`: Unique identifiers for the interface.
+        - `control_file_path`: Path to the control file (e.g., schema or metadata).
+        - `processor_class`: Class responsible for processing files.
+        - `file_extensions`: Supported file types for this interface.
+        - `logger_class`: Logger class for tracking operations.
+
+    How to Add New Interfaces:
+    1. Add a new entry in the `INTERFACES` list with the following keys:
+        - `interface_ids`: A set of unique strings identifying the new interface.
+        - `control_file_path`: Path to the control file containing configuration for the processor.
+        - `processor_class`: A custom processor class implementing required functionality.
+        - `file_extensions`: List of file extensions supported by the processor.
+        - `logger_class`: Logger class to use for the interface.
+    2. Ensure the new `processor_class` and `logger_class` are implemented and compatible with
+       the system's interfaces (e.g., inherit from base classes like `Processor` or `Logger`).
+    3. Optional: Implement Producers/Consumers if the processor supports interchangeability.
+
+    Example:
+    To add a CSV processor:
+    ```
+    {
+        "interface_ids": {"csv", "csv-ingestion"},
+        "control_file_path": "interfaces/csv/control-file.json",
+        "processor_class": CSVProcessor,
+        "file_extensions": [".csv"],
+        "logger_class": SQLLogger,
+    }
+    ```
+
+    Notes on Producers/Consumers:
+    - The Processor can also support interchangeable Producers and Consumers.
+    - Producers generate or fetch data (e.g., pulling from APIs, reading files).
+    - Consumers handle post-processing (e.g., inserting data into SQL tables or sending to a message queue).
+
+    Returns:
+        None
+    """
+
+    # Define the configuration for each interface
+    INTERFACES = [
+        {
+            "interface_ids": {"mist", "mist-ams"},  # Unique IDs for this interface
+            "control_file_path": "interfaces/mist-ams/control-file.json",  # Path to control/configuration file
+            "processor_class": FileProcessor,  # Processor responsible for handling files for this interface
+            "file_extensions": [".json", ".xml"],  # Supported file extensions for ingestion
+            "logger_class": SQLLogger,  # Logger to track operations and log metadata
+        },
+        {
+            "interface_ids": {"dms", "dms-test"},  # Unique IDs for another interface
+            "control_file_path": "interfaces/dms/control-file.json",  # Path to control/configuration file
+            "processor_class": DMSProcessor,  # Processor for handling DMS-specific files
+            "file_extensions": [".xlsx", ".xls"],  # Supported Excel file types
+            "logger_class": SQLLogger,  # Logger for DMS
+        },
+    ]
+
+    # Iterate over each interface configuration to register components
+    for interface in INTERFACES:
+        # Register the logger class for the specified interface IDs
+        LoggerFactory.register_logger(
+            interface["interface_ids"],  # Set of unique interface IDs
+            interface["logger_class"],  # Logger class to register
+        )
+
+        # Register the processor class for the specified interface IDs
+        ProcessorFactory.register_processor(
+            interface["interface_ids"],  # Set of unique interface IDs
+            interface["control_file_path"],  # Path to the control file
+            interface["processor_class"],  # Processor class to register
+            interface["file_extensions"],  # List of supported file extensions
+        )
+
 def parse_arguments():
     """
     Parse command-line arguments for the script.
@@ -91,38 +173,7 @@ def get_files_to_process(config, file_arg, extensions):
         if any(f.endswith(ext) for ext in extensions)
     ]
 
-def register_components():
-    INTERFACES = [
-        {
-            "interface_ids": {"mist", "mist-ams"},
-            "control_file_path": "interfaces/mist-ams/control-file.json",
-            "processor_class": FileProcessor,
-            "file_extensions": [".json", ".xml"],
-            "logger_class": SQLLogger,
-        },
-        {
-            "interface_ids": {"dms", "dms-test"},
-            "control_file_path": "interfaces/dms/control-file.json",
-            "processor_class": DMSProcessor,
-            "file_extensions": [".xlsx", ".xls"],
-            "logger_class": SQLLogger,
-        },
-    ]
 
-    for interface in INTERFACES:
-        # Register loggers
-        LoggerFactory.register_logger(
-            interface["interface_ids"],
-            interface["logger_class"]
-        )
-
-        # Register processors
-        ProcessorFactory.register_processor(
-            interface["interface_ids"],
-            interface["control_file_path"],
-            interface["processor_class"],
-            interface["file_extensions"]
-        )
 
 @contextmanager
 def resource_manager(processor, logger):

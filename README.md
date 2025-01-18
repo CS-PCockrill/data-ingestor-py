@@ -2,21 +2,35 @@
 
 ## **Overview**
 
-This Python project provides a robust set of tools for handling **JSON**, **XML**, and **Excel** file processing. Its key functionalities include:
+This Python project provides a modular, extensible framework for processing **JSON**, **XML**, and **Excel** files with support for database ingestion, configurable schemas, and interchangeable components.
 
-### JSON/XML Processing
-- Export records from JSON or XML files into an **Excel** file.
-- Flatten nested structures in JSON/XML and **insert the processed records into a PostgreSQL or Oracle database**.
+### Key Features
 
-### Excel File Processing
-- Handle Excel files with a schema defined on the **third row** and data records starting from the **fourth row**.
-- Export the processed records into a **CSV file** for seamless integration with SQL Loader or database ingestion workflows.
+#### General Features
+- Modular design with Factories for processors, loggers, and connections.
+- Prometheus integration for real-time metrics and observability.
+- Robust fallback logging and retry mechanisms for resilience.
+- Highly extensible to support new file types, databases, or workflows.
 
-## Configuration Schema
+#### JSON/XML Processing
+- Export records from JSON or XML files into an **Excel** or **CSV** file.
+- Flatten nested structures in JSON/XML and **insert processed records into PostgreSQL or Oracle databases**.
 
-The project uses a configuration schema to map keys in **JSON** or **XML** files to database column names. This ensures seamless data integration by defining explicit key-value mappings.
+#### Excel File Processing
+- Process Excel files with a schema defined on the **third row** and data starting from the **fourth row**.
+- Export processed records into a **CSV file** for integration with SQL Loader or other ingestion workflows.
 
-### Example Configuration Schema
+#### Customization with Producers/Consumers
+- **Producers**: Sources for generating or fetching data (e.g., APIs, file systems).
+- **Consumers**: Sinks for processed data (e.g., SQL, message queues).
+
+---
+
+## **Configuration Schema**
+
+The project uses configuration schemas to map file keys to database columns, ensuring seamless data integration.
+
+### Example Configuration Schemas
 
 #### **JSON Schema**
 ```json
@@ -36,6 +50,7 @@ The project uses a configuration schema to map keys in **JSON** or **XML** files
   }
 }
 ```
+
 #### **XML Schema**
 ```json
 {

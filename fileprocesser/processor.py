@@ -3,6 +3,10 @@ from threading import Thread, Event
 import logging
 
 class Processor:
+    """
+    Generalized Processor class for connecting producers and consumers dynamically.
+    """
+
     def __init__(self, logger=None):
         self.logger = logger
 
@@ -14,11 +18,7 @@ class Processor:
         Args:
             producer (Producer): The producer instance for generating records.
             consumer (Consumer): The consumer instance for processing records.
-            key_column_mapping (dict): Optional mapping of JSON keys to database column names.
-
-        Behavior:
-            - Uses the provided producer to generate records.
-            - Passes records from the producer to the consumer for processing.
+            key_column_mapping (dict): Optional mapping of keys to column names for transformation.
         """
         all_workers_done = Event()
 
@@ -41,7 +41,13 @@ class Processor:
             # Start the consumer task
             def consumer_task():
                 try:
-                    consumer.consume()
+                    while not producer.queue.empty() or not producer.is_done():
+                        record = producer.consume()
+                        if record:
+                            # Optional transformation if key-column mapping is provided
+                            if key_column_mapping:
+                                record = self._transform(record, key_column_mapping)
+                            consumer.consume(record)
                 except Exception as e:
                     logging.error(f"Consumer encountered an error: {e}")
                     METRICS["errors"].inc()
@@ -64,6 +70,21 @@ class Processor:
             raise
         finally:
             producer.close()
+            consumer.close()
 
-    def process_files(self, files, producer=None):
+    def _transform(self, record, key_column_mapping):
+        """
+        Transforms a record using a key-column mapping.
+
+        Args:
+            record (dict): The record to transform.
+            key_column_mapping (dict): The mapping of keys to column names.
+
+        Returns:
+            dict: The transformed record.
+        """
+        return {key_column_mapping.get(k, k): v for k, v in record.items()}
+
+
+    def process_files(self, files):
         pass

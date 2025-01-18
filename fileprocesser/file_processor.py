@@ -51,81 +51,99 @@ class FileProcessor(Processor):
             logging.error(f"Failed to write metrics to file: {e}")
             raise
 
-    def process_files(self, files, producer=None):
+    def process_files(self, files):
         """
-        Process a list of files dynamically based on their file types.
+        Processes a list of files dynamically based on their file types.
 
         Args:
             files (list): List of file paths to process.
-            producer (Producer): Optional producer for message queue.
 
         Behavior:
             - Determines the file type (JSON or XML) based on the file extension.
             - Fetches the schema and tag name for the file type.
-            - Calls the `_process` method to handle parsing and insertion for each file.
+            - Dynamically sets up producer and consumer for each file.
+            - Calls `process` for each file.
         """
+        if not files:
+            logging.warning("No files provided for processing.")
+            return
+
         for file_path in files:
-            # Determine the file type based on the file extension
-            file_type = "json" if file_path.endswith(".json") else "xml"
-
-            # Retrieve the appropriate schema and tag name
             try:
-                schema, tag_name = self._get_schema_and_tag(file_type)
-            except ValueError as e:
-                logging.error(f"Error determining schema and tag for file {file_path}: {e}")
-                METRICS["errors"].inc()
-                continue
+                # Configure producer and consumer dynamically
+                producer, consumer, schema = self._configure_pipeline_for_file(file_path)
 
-            # Log the start of processing for the file
-            logging.info(f"Processing file {file_path} as {file_type}.")
+                # Process the file
+                logging.info(f"Starting processing for file: {file_path}")
+                self.process(producer=producer, consumer=consumer, key_column_mapping=schema)
 
-            # Process the file using the determined schema and tag and move to the output directory after successful processing
-            try:
-                # File-based processing
-                file_producer = FileProducer(maxsize=1000)
-                file_producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
-
-                consumer = SQLConsumer(
-                    logger=self.logger,
-                    table_name=self.table_name,
-                    producer=file_producer,
-                    connection_manager=self.connection_manager,
-                    key_column_mapping=schema,
-                    batch_size=5
-                )
-
-                # Invoke the processing pipeline
-                # Call parent class _process method
-                super().process(producer=file_producer, consumer=consumer, key_column_mapping=schema)
-
+                # Move the file to the output directory after successful processing
                 self._move_file_to_folder(file_path, self.config["outputDirectory"])
+                logging.info(f"Successfully processed and moved file: {file_path}")
+
             except Exception as e:
-                logging.error(f"File processing failed for {file_path}: {e}")
+                logging.error(f"Failed to process file {file_path}: {e}")
                 METRICS["errors"].inc()
-                raise
+
+    def _configure_pipeline_for_file(self, file_path):
+        """
+        Configures the producer and consumer pipeline for a given file.
+
+        Args:
+            file_path (str): Path to the input file.
+
+        Returns:
+            tuple: Configured producer, consumer, and schema.
+
+        Raises:
+            ValueError: If the file type is unsupported or schema/tag cannot be determined.
+        """
+        # Determine file type and schema
+        file_type = "json" if file_path.endswith(".json") else "xml"
+        schema, tag_name = self._get_schema_and_tag(file_type)
+
+        # Configure producer
+        producer = FileProducer(maxsize=1000)
+        producer.set_source(file_path=file_path, file_type=file_type, schema_tag=tag_name)
+
+        # Configure consumer
+        consumer = SQLConsumer(
+            logger=self.logger,
+            table_name=self.table_name,
+            producer=producer,
+            connection_manager=self.connection_manager,
+            key_column_mapping=schema,
+            batch_size=5
+        )
+
+        return producer, consumer, schema
 
     def _get_schema_and_tag(self, file_type):
         """
-        Dynamically retrieve the schema and tag name based on the file type.
+        Retrieves the schema and tag name for a given file type.
 
         Args:
-            file_type (str): File type, either 'json' or 'xml'.
+            file_type (str): Type of the file ('json' or 'xml').
 
         Returns:
-            tuple: A tuple containing the schema and tag name for the specified file type.
+            tuple: Schema (dict) and tag name (str).
 
         Raises:
-            ValueError: If an unsupported file type is provided.
+            ValueError: If the file type is unsupported or schema/tag is not found.
         """
         if file_type == "json":
-            # Retrieve schema and tag name for JSON files
-            return self.config.get("jsonSchema"), self.config.get("jsonTagName", "Records")
+            schema = self.config.get("jsonSchema")
+            tag_name = self.config.get("jsonTag", "records")
         elif file_type == "xml":
-            # Retrieve schema and tag name for XML files
-            return self.config.get("xmlSchema"), self.config.get("xmlTagName", "Record")
+            schema = self.config.get("xmlSchema")
+            tag_name = self.config.get("xmlTag", "record")
         else:
-            # Handle unsupported file types
             raise ValueError(f"Unsupported file type: {file_type}")
+
+        if not schema or not tag_name:
+            raise ValueError(f"Schema or tag name missing for file type: {file_type}")
+
+        return schema, tag_name
 
     def _move_file_to_folder(self, file_path, folder_path):
         import shutil
