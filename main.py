@@ -294,8 +294,6 @@ def main():
         "file_path": os.path.join(config["inputDirectory"], args.file),
         "file_type": "json",
         "schema_tag": "jsonSchema",
-        # "inputDirectory": config.get("inputDirectory"),
-        # "supportedExtensions": config.get("supportedExtensions", [".json", ".xml"])
     })
 
     # Update the consumerConfig dynamically
