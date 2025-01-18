@@ -11,7 +11,11 @@ from helpers import load_json_mapping
 from logger.logger_factory import LoggerFactory
 from logger.sqllogger import SQLLogger
 from msgbroker.consumer_factory import ConsumerFactory
+from msgbroker.excel_consumer import ExcelConsumer
+from msgbroker.excel_producer import ExcelProducer
+from msgbroker.file_producer import FileProducer
 from msgbroker.producer_factory import ProducerFactory
+from msgbroker.sql_consumer import SQLConsumer
 
 # Configure logger
 logging.basicConfig(
@@ -78,6 +82,8 @@ def register_components():
             "processor_class": FileProcessor,  # Processor responsible for handling files for this interface
             "file_extensions": [".json", ".xml"],  # Supported file extensions for ingestion
             "logger_class": SQLLogger,  # Logger to track operations and log metadata
+            "producer_class": FileProducer,
+            "consumer_class": SQLConsumer,
         },
         {
             "interface_ids": {"dms", "dms-test"},  # Unique IDs for another interface
@@ -85,6 +91,8 @@ def register_components():
             "processor_class": DMSProcessor,  # Processor for handling DMS-specific files
             "file_extensions": [".xlsx", ".xls"],  # Supported Excel file types
             "logger_class": SQLLogger,  # Logger for DMS
+            "producer_class": ExcelProducer,
+            "consumer_class": ExcelConsumer,
         },
     ]
 
@@ -95,6 +103,11 @@ def register_components():
             interface["interface_ids"],  # Set of unique interface IDs
             interface["logger_class"],  # Logger class to register
         )
+
+        # Register the producer with the factory
+        ProducerFactory.register_producer(interface["interface_ids"], interface["producer_class"])
+        # Register the consumer with the factory
+        ConsumerFactory.register_consumer(interface["interface_ids"], interface["consumer_class"])
 
         # Register the processor class for the specified interface IDs
         ProcessorFactory.register_processor(
@@ -199,6 +212,61 @@ def resource_manager(processor, logger):
         except Exception as e:
             logging.warning(f"Failed to close the logger: {e}")
 
+# def main():
+#     """
+#     Main entry point for the script.
+#     """
+#     # 1. Register all components
+#     register_components()
+#
+#     # 2. Parse command-line arguments
+#     args = parse_arguments()
+#
+#     # 3. Validate interface ID and load configuration
+#     interface_id = args.interface_id
+#     if interface_id not in ProcessorFactory.get_interface_configs().keys():
+#         logging.error(f"Interface ID '{interface_id}' is not registered.")
+#         raise ValueError(f"Invalid Interface ID: {interface_id}")
+#
+#     # Load the configuration for the interface
+#     control_file_path = ProcessorFactory.get_control_file_path(interface_id)
+#     config = load_json_mapping(control_file_path)
+#
+#     # Determine source type and invoke processor
+#     try:
+#         # Create the processor
+#         processor = ProcessorFactory.create_processor(interface_id, config)
+#
+#         # Check for supported file extensions to determine source type
+#         file_extensions = ProcessorFactory.get_supported_file_extensions(interface_id)
+#
+#         if file_extensions:
+#             # Handle file-based source
+#             files = get_files_to_process(config, args.file, extensions=file_extensions)
+#             if not files:
+#                 logging.error(f"No files with valid extensions found in {config['inputDirectory']}.")
+#                 raise ValueError(f"No files to process in {config['inputDirectory']}.")
+#             processor.process_files(files)
+#         else:
+#             # Handle non-file-based source and destination
+#             producer = ProducerFactory.create_producer(interface_id, **config.get("producerConfig", {}))
+#             consumer = ConsumerFactory.create_consumer(interface_id, **config.get("consumerConfig", {}))
+#             processor.process(producer=producer, consumer=consumer)
+#
+#         # Write metrics if supported
+#         if hasattr(processor, "write_metrics_to_file"):
+#             processor.write_metrics_to_file("prometheus_metrics.txt")
+#
+#     except Exception as e:
+#         logging.error(f"An error occurred during processing: {e}")
+#         raise
+#     finally:
+#         if hasattr(processor, "close"):
+#             processor.close()
+#
+#     logging.info("Processing completed successfully.")
+
+
 def main():
     """
     Main entry point for the script.
@@ -219,40 +287,50 @@ def main():
     control_file_path = ProcessorFactory.get_control_file_path(interface_id)
     config = load_json_mapping(control_file_path)
 
-    # Determine source type and invoke processor
+    # Update the producerConfig to include input directory or specific file
+    config["producerConfig"].update({
+        "schema_tag": "jsonSchema",
+        "file_type": "json",
+        "file_path": args.file,
+        "inputDirectory": config.get("inputDirectory"),
+        "supportedExtensions": config.get("supportedExtensions", [".json", ".xml"])
+    })
+
+    # Update the consumerConfig dynamically
+    config["consumerConfig"].update({
+        "table_name": config.get("tableName"),
+        "producer": None,
+        "connection_manager": None,
+        "key_column_mapping": config.get("jsonSchema"),
+        "batch_size": 5,
+    })
+
     try:
-        # Create the processor
+        # Create processor
         processor = ProcessorFactory.create_processor(interface_id, config)
 
-        # Check for supported file extensions to determine source type
-        file_extensions = ProcessorFactory.get_supported_file_extensions(interface_id)
+        # Create producer dynamically
+        producer = ProducerFactory.create_producer(interface_id, **config["producerConfig"])
 
-        if file_extensions:
-            # Handle file-based source
-            files = get_files_to_process(config, args.file, extensions=file_extensions)
-            if not files:
-                logging.error(f"No files with valid extensions found in {config['inputDirectory']}.")
-                raise ValueError(f"No files to process in {config['inputDirectory']}.")
-            processor.process_files(files)
-        else:
-            # Handle non-file-based source and destination
-            producer = ProducerFactory.create_producer(interface_id, **config.get("producerConfig", {}))
-            consumer = ConsumerFactory.create_consumer(interface_id, **config.get("consumerConfig", {}))
-            processor.process(producer=producer, consumer=consumer)
+        # Update the consumerConfig to reference the created producer
+        config["consumerConfig"].update({"producer": producer})
+
+        # Create consumer dynamically
+        consumer = ConsumerFactory.create_consumer(interface_id, **config["consumerConfig"])
+
+        # Process records using the processor
+        processor.process(producer=producer, consumer=consumer)
 
         # Write metrics if supported
         if hasattr(processor, "write_metrics_to_file"):
             processor.write_metrics_to_file("prometheus_metrics.txt")
 
     except Exception as e:
-        logging.error(f"An error occurred during processing: {e}")
+        logging.error(f"Processing failed: {e}")
         raise
     finally:
         if hasattr(processor, "close"):
             processor.close()
-
-    logging.info("Processing completed successfully.")
-
 
 
 if __name__ == "__main__":
