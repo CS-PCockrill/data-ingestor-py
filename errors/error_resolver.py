@@ -33,6 +33,7 @@ class ErrorResolver:
         Raises:
             Exception: If there is a failure during database query execution.
         """
+        logging.info("Error table name: %s | Symbol: %s", self.error_table_name, symbol)
         query = f"SELECT svrt, dscr FROM {self.error_table_name} WHERE symb = %s"
         try:
             # Using a context manager for the database cursor
