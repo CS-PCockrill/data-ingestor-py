@@ -48,14 +48,14 @@ def flatten_dict(data):
 
     # If no nested records exist, return the base record as a single-item list
     if not nested_records:
-        logging.debug("No nested records found; returning base record.")
+        logging.info("No nested records found; returning base record.")
         return [base_record]
 
     # Update each nested record with values from the base record
     for record in nested_records:
         record.update(base_record)
 
-    logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
+    logging.info(f"Flattened dictionary to {len(nested_records)} records.")
     return nested_records
 
 
@@ -174,10 +174,12 @@ class FileProducer(Producer):
 
         # Flatten and yield each record
         if isinstance(records, list):
+            logging.info(f"Records were loaded into a List: {records}")
             for record in records:
                 for flattened in flatten_dict(record):
                     yield flattened
         elif isinstance(records, dict):
+            logging.info(f"Records were loaded into a Dictionary: {records}")
             for flattened in flatten_dict(records):
                 yield flattened
 
