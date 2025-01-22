@@ -271,7 +271,7 @@ def main():
         # Update the consumerConfig to reference the created producer and logger
         config["consumerConfig"].update({"producer": producer})
         config["consumerConfig"].update({"logger": processor.logger})
-        config["consumerConfig"].update({"connection_manager", DBConnectionFactory.get_connection_manager(config['dbType'], config)
+        config["consumerConfig"].update({"connection_manager": DBConnectionFactory.get_connection_manager(config['dbType'], config)
 })
 
         # Create consumer dynamically
