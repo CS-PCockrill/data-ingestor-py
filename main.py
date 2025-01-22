@@ -131,8 +131,8 @@ def determine_file_type_and_schema(file_name):
 
     # Define mappings of file extensions to types and schemas
     file_type_mapping = {
-        ".json": {"file_type": "json", "schema_tag": "jsonSchema"},
-        ".xml": {"file_type": "xml", "schema_tag": "xmlSchema"},
+        ".json": {"file_type": "json", "schema_tag": "jsonTagName"},
+        ".xml": {"file_type": "xml", "schema_tag": "xmlTagName"},
         # Add more mappings here if needed
     }
 
