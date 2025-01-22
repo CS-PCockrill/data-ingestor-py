@@ -41,7 +41,7 @@ class SQLConsumer(Consumer):
             symbol="GS2001W",
             job_name=f"Consume Records for {self.producer.artifact_name}",
             artifact_name=self.producer.artifact_name,
-            start_time=datetime.datetime.now(datetime.timezone.utc),
+            start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             success=False,
             status="IN PROGRESS"
         )
@@ -63,7 +63,7 @@ class SQLConsumer(Consumer):
                 job_name=f"Consume Records for {self.producer.artifact_name}",
                 artifact_name=self.producer.artifact_name,
                 error_message=str(e),
-                end_time=datetime.datetime.now(datetime.timezone.utc),
+                end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 job_id=job_id,
                 success=False,
                 status="ERROR"
@@ -84,7 +84,7 @@ class SQLConsumer(Consumer):
                 artifact_name=self.producer.artifact_name,
                 job_id=job_id,
                 success=not self.error,
-                end_time=datetime.datetime.now(datetime.timezone.utc),
+                end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 status="COMPLETED"
             )
 
