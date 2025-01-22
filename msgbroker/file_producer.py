@@ -83,8 +83,9 @@ class FileProducer(Producer):
         Yields:
             dict: Flattened records extracted from the file.
         """
-        parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
-        for record in parser(file_path, "jsonSchema"):
+        parser = self.parse_json_file if file_type == "json" else self.parse_xml_file
+        for record in parser(file_path, schema_tag=schema_tag):
+            logging.info("===== RECORD: %s", record)
             yield record
 
     def _flatten_dict(self, data):
@@ -138,7 +139,7 @@ class FileProducer(Producer):
         logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
         return nested_records
 
-    def _parse_json_file(self, file_path, schema_tag="Records"):
+    def parse_json_file(self, file_path, schema_tag="Records"):
         """
         Parses and flattens JSON records from a file.
 
@@ -179,7 +180,7 @@ class FileProducer(Producer):
             for flattened in self._flatten_dict(records):
                 yield flattened
 
-    def _parse_xml_file(self, file_path, schema_tag="Record"):
+    def parse_xml_file(self, file_path, schema_tag="Record"):
         """
         Parses and flattens XML records from a file.
 

@@ -54,9 +54,9 @@ class SQLConsumer(Consumer):
                 if record is None:
                     break  # Signal that production is complete
 
-                logging.info(f"Processing record: {record} COUNT: {count}")
+                # logging.info(f"Processing record: {record} COUNT: {count}")
                 self.process_record(record)
-                count += 1
+                # count += 1
 
                 if len(self.batch) >= self.batch_size:
                     self._insert_batch()
