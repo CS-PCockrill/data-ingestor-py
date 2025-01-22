@@ -84,7 +84,7 @@ class FileProducer(Producer):
             dict: Flattened records extracted from the file.
         """
         parser = self._parse_json_file if file_type == "json" else self._parse_xml_file
-        for record in parser(file_path, schema_tag):
+        for record in parser(file_path, "jsonSchema"):
             yield record
 
     def _flatten_dict(self, data):

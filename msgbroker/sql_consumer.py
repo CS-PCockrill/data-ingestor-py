@@ -111,6 +111,7 @@ class SQLConsumer(Consumer):
             transformed_record["processed"] = False
             with self.lock:
                 self.batch.append(transformed_record)
+
             self.logger.log_job(
                 symbol="GS2001W",
                 job_name="Transform Record",
