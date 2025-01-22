@@ -4,7 +4,7 @@ import os.path
 import logging
 from contextlib import contextmanager
 
-from config.config import INTERFACES
+from config.interfaces_config import INTERFACES
 from db.connection_factory import DBConnectionFactory
 from fileprocesser.file_processor import FileProcessor
 from fileprocesser.processor_factory import ProcessorFactory
