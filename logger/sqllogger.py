@@ -88,7 +88,7 @@ class SQLLogger(Logger):
         self.context = context
         self.query_builder = self.connection_manager.get_query_builder(context.logs_table)
         self.query_builder.set_schema(context.logger_schema)
-        self.error_resolver = ErrorResolver(self.connection_manager.connect(), context.error_table)
+        self.error_resolver = ErrorResolver(self.conn, context.error_table)
         self.fallback_logger = setup_fallback_logger()
         logging.debug("SQLLogger initialized successfully.")
 
@@ -182,6 +182,7 @@ class SQLLogger(Logger):
             logging.info(f"Successfully executed query: {query}")
         except Exception as e:
             logging.error(f"Error executing query: {query}, Parameters: {parameters}, Error: {e}")
+            self.conn.rollback()
             raise
 
     def _fallback_log(self, symbol, message, kwargs):

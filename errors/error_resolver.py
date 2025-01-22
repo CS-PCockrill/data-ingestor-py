@@ -45,14 +45,18 @@ class ErrorResolver:
                     # Unpack the result into severity and description
                     severity, description = result
                     # Format the description with additional arguments, if any
+                    # self.conn.commit()
                     return severity, description.format(*args)
                 else:
                     # Log a warning if the symbol is not found
                     logging.warning(f"Error symbol '{symbol}' not found in {self.error_table_name}.")
+                    # self.conn.commit()
                     return "W", f"Unknown error: {symbol}"
+
 
         except Exception as e:
             # Log and propagate exceptions for visibility and debugging
+            # self.conn.rollback()
             logging.error(f"Failed to resolve error definition for '{symbol}': {e}")
             raise
 
