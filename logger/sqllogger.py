@@ -178,6 +178,7 @@ class SQLLogger(Logger):
                 cursor.execute(query, parameters)
                 if query.strip().lower().startswith("insert"):
                     return cursor.fetchone()[0]
+
                 self.conn.commit()
             # logging.info(f"Successfully executed query: {query}")
         except Exception as e:

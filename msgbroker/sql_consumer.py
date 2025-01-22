@@ -53,6 +53,7 @@ class SQLConsumer(Consumer):
                 if record is None:
                     break  # Signal that production is complete
 
+                logging.info(f"Processing record: {record}")
                 self.process_record(record)
 
                 if len(self.batch) >= self.batch_size:
@@ -192,6 +193,7 @@ class SQLConsumer(Consumer):
                 )
                 METRICS["records_processed"].inc(len(self.batch))
                 self.batch.clear()
+
         except Exception as e:
             self.logger.log_job(
                 query=query,
