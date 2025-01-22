@@ -1,6 +1,18 @@
 from db.query_builder import QueryBuilder
 
 class PostgresQueryBuilder(QueryBuilder):
+    def __init__(self, table_name, schema=None):
+        """
+        Initializes the PostgresQueryBuilder with table name and optional schema.
+
+        Args:
+            table_name (str): Name of the database table for query generation.
+            schema (dict, optional): Schema mapping logical keys to database column names.
+        """
+        super().__init__(table_name)
+        self.table_name = table_name
+        self.schema = schema or {}
+
     def build_insert_query(self, columns, batch=True):
         """
         Generate an INSERT query with column names wrapped in double quotes
@@ -32,3 +44,25 @@ class PostgresQueryBuilder(QueryBuilder):
         assignments = ", ".join(f'"{col.lower()}" = %s' for col in columns if col != "job_id")
         return f"UPDATE {self.table_name} SET {assignments} WHERE {condition}"
 
+    def set_schema(self, schema):
+        """
+        Updates the schema for the query builder.
+
+        Args:
+            schema (dict): Schema mapping logical keys to database column names.
+        """
+        self.schema = schema
+
+    def map_to_columns(self, data):
+        """
+        Maps logical keys in the input data to their corresponding database column names.
+
+        Args:
+            data (dict): Input data with logical keys.
+
+        Returns:
+            dict: Data with database column names as keys.
+        """
+        if not self.schema:
+            return data
+        return {self.schema.get(key, key): value for key, value in data.items()}

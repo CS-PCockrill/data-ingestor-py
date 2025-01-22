@@ -4,19 +4,15 @@ import os.path
 import logging
 from contextlib import contextmanager
 
-from db.connection_manager import PostgresConnectionManager
-from fileprocesser.dms_processor import DMSProcessor
+from config.config import INTERFACES
+from db.connection_factory import DBConnectionFactory
 from fileprocesser.file_processor import FileProcessor
 from fileprocesser.processor_factory import ProcessorFactory
 from helpers import load_json_mapping
 from logger.logger_factory import LoggerFactory
 from logger.sqllogger import SQLLogger
 from msgbroker.consumer_factory import ConsumerFactory
-from msgbroker.excel_consumer import ExcelConsumer
-from msgbroker.excel_producer import ExcelProducer
-from msgbroker.file_producer import FileProducer
 from msgbroker.producer_factory import ProducerFactory
-from msgbroker.sql_consumer import SQLConsumer
 
 # Configure logger
 logging.basicConfig(
@@ -75,28 +71,6 @@ def register_components():
         None
     """
 
-    # Define the configuration for each interface
-    INTERFACES = [
-        {
-            "interface_ids": {"mist", "mist-ams"},  # Unique IDs for this interface
-            "control_file_path": "interfaces/mist-ams/control-file.json",  # Path to control/configuration file
-            "processor_class": FileProcessor,  # Processor responsible for handling files for this interface
-            "file_extensions": [".json", ".xml"],  # Supported file extensions for ingestion
-            "logger_class": SQLLogger,  # Logger to track operations and log metadata
-            "producer_class": FileProducer,
-            "consumer_class": SQLConsumer,
-        },
-        {
-            "interface_ids": {"dms", "dms-test"},  # Unique IDs for another interface
-            "control_file_path": "interfaces/dms/control-file.json",  # Path to control/configuration file
-            "processor_class": DMSProcessor,  # Processor for handling DMS-specific files
-            "file_extensions": [".xlsx", ".xls"],  # Supported Excel file types
-            "logger_class": SQLLogger,  # Logger for DMS
-            "producer_class": ExcelProducer,
-            "consumer_class": ExcelConsumer,
-        },
-    ]
-
     # Iterate over each interface configuration to register components
     for interface in INTERFACES:
         # Register the logger class for the specified interface IDs
@@ -151,46 +125,22 @@ def validate_interface_id(interface_id, interface_ids):
         logging.error(f"Interface ID '{interface_id}' not found in INTERFACE_IDS.")
         raise ValueError(f"Invalid Interface ID: {interface_id}")
 
-def load_config(interface_id, interface_ids):
-    """
-    Load the configuration for the specified interface ID.
-    Args:
-        interface_id (str): The interface ID to use.
-        interface_ids (dict): Mapping of interface IDs to config paths.
-    Returns:
-        dict: Loaded configuration.
-    """
-    config_path = interface_ids[interface_id]
-    try:
-        config = load_json_mapping(config_path)
-        logging.info(f"Successfully loaded configuration from {config_path} with configuration:\n\t{config}")
-        return config
-    except Exception as e:
-        logging.error(f"Failed to load configuration: {e}")
-        raise
+# Determine file_type and schema_tag dynamically based on file extension
+def determine_file_type_and_schema(file_name):
+    file_extension = os.path.splitext(file_name)[1].lower()
 
-def get_files_to_process(config, file_arg, extensions):
-    """
-    Get a list of files to process.
+    # Define mappings of file extensions to types and schemas
+    file_type_mapping = {
+        ".json": {"file_type": "json", "schema_tag": "jsonSchema"},
+        ".xml": {"file_type": "xml", "schema_tag": "xmlSchema"},
+        # Add more mappings here if needed
+    }
 
-    Args:
-        config (dict): Configuration dictionary.
-        file_arg (str): Specific file path from command-line arguments.
-        extensions (list): List of valid file extensions.
-
-    Returns:
-        list: List of file paths to process.
-    """
-    input_dir = config["inputDirectory"]
-    if file_arg:
-        return [os.path.join(input_dir, file_arg)]
-    return [
-        os.path.join(input_dir, f)
-        for f in os.listdir(input_dir)
-        if any(f.endswith(ext) for ext in extensions)
-    ]
-
-
+    # Retrieve file_type and schema_tag or raise an error for unsupported extensions
+    if file_extension in file_type_mapping:
+        return file_type_mapping[file_extension]["file_type"], file_type_mapping[file_extension]["schema_tag"]
+    else:
+        raise ValueError(f"Unsupported file extension: {file_extension}")
 
 @contextmanager
 def resource_manager(processor, logger):
@@ -289,20 +239,25 @@ def main():
     control_file_path = ProcessorFactory.get_control_file_path(interface_id)
     config = load_json_mapping(control_file_path)
 
-    # Update the producerConfig to include input directory or specific file
+    file_name = args.file
+    file_path = os.path.join(config["inputDirectory"], file_name)
+
+    # Dynamically determine file_type and schema_tag
+    file_type, schema_tag = determine_file_type_and_schema(file_name)
+
+    # Update producerConfig
     config["producerConfig"].update({
-        "file_path": os.path.join(config["inputDirectory"], args.file),
-        "file_type": "json",
-        "schema_tag": "jsonSchema",
+        "file_path": file_path,
+        "file_type": file_type,
+        "schema_tag": schema_tag,
     })
 
-    # Update the consumerConfig dynamically
+    # Update consumerConfig
     config["consumerConfig"].update({
         "logger": None,
         "table_name": config.get("tableName"),
         "producer": None,
-        "connection_manager": PostgresConnectionManager(config),
-        "key_column_mapping": config.get("jsonSchema"),
+        "key_column_mapping": config.get(schema_tag),  # Dynamically use schema_tag
         "batch_size": 5,
     })
 
@@ -313,9 +268,11 @@ def main():
         # Create producer dynamically
         producer = ProducerFactory.create_producer(interface_id, **config["producerConfig"])
 
-        # Update the consumerConfig to reference the created producer
+        # Update the consumerConfig to reference the created producer and logger
         config["consumerConfig"].update({"producer": producer})
         config["consumerConfig"].update({"logger": processor.logger})
+        config["consumerConfig"].update({"connection_manager", DBConnectionFactory.get_connection_manager(config['dbType'], config)
+})
 
         # Create consumer dynamically
         consumer = ConsumerFactory.create_consumer(interface_id, **config["consumerConfig"])

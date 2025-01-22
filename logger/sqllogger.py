@@ -7,7 +7,6 @@ import logging.handlers
 from prometheus_client import Counter, Histogram
 
 from logger.logger import Logger
-from db.query_builder import QueryBuilder
 from errors.error_resolver import ErrorResolver
 
 # Prometheus metrics for observability
@@ -54,20 +53,22 @@ class LoggerContext:
         table_name (str): Name of the primary database table being logged.
         error_table (str): Name of the table for logging errors.
         logs_table (str): Name of the table for storing general logs.
+        logger_schema (dict): The schema of the logger table to log to the database.
     """
 
-    def __init__(self, interface_type, user_id, table_name, error_table_name, logs_table_name):
+    def __init__(self, interface_type, user_id, table_name, error_table_name, logs_table_name, logger_schema):
         self.interface_type = interface_type
         self.user_id = user_id
         self.table_name = table_name
         self.error_table = error_table_name
         self.logs_table = logs_table_name
+        self.logger_schema = logger_schema
 
         # Debugging initialization
         logging.debug(
             f"LoggerContext initialized with: interface_type={interface_type}, "
             f"user_id={user_id}, table_name={table_name}, "
-            f"error_table={error_table_name}, logs_table={logs_table_name}"
+            f"error_table={error_table_name}, logs_table={logs_table_name}, logger_schema={logger_schema}"
         )
 
 
@@ -82,62 +83,79 @@ class SQLLogger(Logger):
 
     def __init__(self, connection_manager, context):
         super().__init__()
-        self.connection_manager = connection_manager  # Connection manager instance
-        self.conn = self.connection_manager.connect()  # Establish a connection
-        self.context = context  # Logging context for metadata
-
-        # Query builder for constructing SQL queries dynamically
+        self.connection_manager = connection_manager
+        self.conn = self.connection_manager.connect()
+        self.context = context
         self.query_builder = self.connection_manager.get_query_builder(context.logs_table)
-
-        # Error resolver for handling and classifying errors
+        self.query_builder.set_schema(context.logger_schema)
         self.error_resolver = ErrorResolver(self.conn, context.error_table)
-
-        # Fallback logger for cases where database logging fails
         self.fallback_logger = setup_fallback_logger()
+        logging.debug("SQLLogger initialized successfully.")
 
-        logging.debug("SQLLogger initialized successfully with context and fallback logger.")
+    def _build_parameters(self, **kwargs):
+        """
+        Dynamically constructs a dictionary of parameters based on the provided schema.
 
-    def _build_insert_parameters(self, symbol, severity, message, current_time, host_name, **kwargs):
+        Args:
+            current_time (datetime): Current timestamp.
+            host_name (str): Name of the host machine.
+            **kwargs: Dynamic fields for the parameters.
+
+        Returns:
+            dict: Constructed parameters for SQL operations.
         """
-        Constructs a dictionary of parameters for inserting a new log into the database.
-        """
-        parameters = {
-            "job_name": kwargs.get("job_name", "Job"),
-            "job_type": kwargs.get("job_type", self.context.interface_type),
-            "symb": symbol,
-            "severity": severity,
-            "status": "IN PROGRESS",
-            "start_time": current_time,
-            "message": message,
-            "error_message": kwargs.get("error_message"),
-            "query": kwargs.get("query"),
-            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,
-            "artifact_name": kwargs.get("artifact_name"),
-            "user_id": self.context.user_id,
-            "host_name": host_name,
-            "table_name": self.context.table_name,
-        }
-        logging.debug(f"Insert parameters constructed: {parameters}")
+        parameters = {}
+
+        for key, db_column in self.query_builder.schema.items():
+            if key in kwargs:
+                parameters[db_column] = kwargs[key]
+
+        logging.debug(f"Constructed parameters: {parameters}")
         return parameters
 
-    def _build_update_parameters(self, symbol, severity, message, current_time, **kwargs):
+    def log_job(self, *args, symbol, **kwargs):
         """
-        Constructs a dictionary of parameters for updating an existing log entry in the database.
-        """
-        parameters = {
-            "status": "SUCCESS" if kwargs.get("success") else "FAILURE",  # Log status
-            "end_time": current_time,  # Current timestamp
-            "message": message,  # Log message
-            "error_message": kwargs.get("error_message"),  # Error details, if any
-            "query": kwargs.get("query"),  # SQL query associated with the log
-            "values": json.dumps(kwargs.get("values")) if kwargs.get("values") else None,  # Query parameters
-            "user_id": self.context.user_id,  # User ID from context
-            "table_name": self.context.table_name,  # Main table being logged
-            "job_id": kwargs.get("job_id"),  # Job ID for the update
-        }
+        Logs a job entry to the database, either by inserting a new entry or updating an existing one.
 
-        logging.debug(f"Update parameters constructed: {parameters}")
-        return parameters
+        Args:
+            *args: Positional arguments for the error resolver.
+            symbol (str): Unique identifier for the log type (e.g., error or info).
+            **kwargs: Additional metadata fields for the log.
+
+        Returns:
+            int: Job ID of the logged entry.
+
+        Raises:
+            Exception: Logs errors and triggers fallback logging on failure.
+        """
+        try:
+            severity, message = self.error_resolver.resolve(symbol, *args)
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            host_name = socket.gethostname()
+
+            job_id = kwargs.get("job_id")
+
+            if job_id is None:
+                # Insert operation
+                insert_params = self._build_parameters(
+                    symbol=symbol, severity=severity, message=message, **kwargs
+                )
+                insert_query = self.query_builder.build_insert_query(insert_params.keys(), batch=False)
+                job_id = self._execute_query(insert_query, tuple(insert_params.values()))
+            else:
+                # Update operation
+                update_params = self._build_parameters(
+                    symbol=symbol, severity=severity, message=message, **kwargs
+                )
+                update_query = self.query_builder.build_update_query(update_params.keys())
+                self._execute_query(update_query, tuple(update_params.values()) + (job_id,))
+
+            LOG_DB_WRITE_SUCCESS.inc()
+            return job_id
+        except Exception as e:
+            LOG_DB_WRITE_FAILURE.inc()
+            logging.error(f"Failed to log job: {e}")
+            self._fallback_log(symbol, str(e), kwargs)
 
     def _execute_query(self, query, parameters):
         """
@@ -155,133 +173,14 @@ class SQLLogger(Logger):
         """
         try:
             with self.conn.cursor() as cursor:
-                # Execute the query
                 cursor.execute(query, parameters)
-
-                # Handle "RETURNING id" for insert queries
                 if query.strip().lower().startswith("insert"):
                     return cursor.fetchone()[0]
-
-                # Commit changes
                 self.conn.commit()
-
             logging.info(f"Successfully executed query: {query}")
         except Exception as e:
             logging.error(f"Error executing query: {query}, Parameters: {parameters}, Error: {e}")
             raise
-
-    def _insert_job(self, parameters):
-        """
-        Inserts a new log entry into the database.
-
-        Args:
-            parameters (dict): Parameters for the insert query.
-
-        Returns:
-            int: Generated ID of the inserted log entry.
-
-        Raises:
-            Exception: Propagates database exceptions for error handling.
-        """
-        # Build the query using parameter keys
-        insert_query = self.query_builder.build_insert_query(parameters.keys(), batch=False)
-
-        # Convert parameters to tuple (ensure consistent order with .keys())
-        parameter_tuple = tuple(parameters.values())
-
-        logging.debug(f"Executing insert with query: {insert_query}, Parameters: {parameter_tuple}")
-
-        try:
-            return self._execute_query(insert_query, parameter_tuple)
-        except Exception as e:
-            logging.error(f"Failed to insert job: {e}")
-            raise
-
-    def _update_job(self, parameters):
-        """
-        Updates an existing log entry in the database.
-
-        Args:
-            parameters (dict): Parameters for the update query.
-
-        Raises:
-            Exception: Propagates database exceptions for error handling.
-        """
-        try:
-            # Ensure 'job_id' is included for the WHERE clause
-            if "job_id" not in parameters:
-                raise ValueError("Missing 'job_id' in parameters for WHERE clause.")
-
-            # Generate query with dynamic column placeholders
-            update_query = self.query_builder.build_update_query(parameters.keys())
-
-            # Move job_id to the end of the parameter values
-            job_id = parameters.pop("job_id")
-            parameter_values = tuple(parameters.values()) + (job_id,)
-
-            # Log the query and parameters for debugging
-            logging.info(f"======Generated Query: {update_query}")
-            logging.info(f"======Parameters: {parameter_values}")
-
-            # Execute the query
-            self._execute_query(update_query, parameter_values)
-            logging.info("Successfully updated the job.")
-        except Exception as e:
-            logging.error(f"Failed to update job: {e}")
-            raise
-
-    @LOG_PROCESSING_TIME.time()  # Track execution time of this method
-    def log_job(self, *args, symbol, **kwargs):
-        """
-        Logs a job entry to the database, either by inserting a new entry or updating an existing one.
-
-        Args:
-            *args: Positional arguments for the error resolver.
-            symbol (str): Unique identifier for the log type (e.g., error or info).
-            **kwargs: Additional metadata fields for the log.
-
-        Returns:
-            int: Job ID of the logged entry.
-
-        Raises:
-            Exception: Logs errors and triggers fallback logging on failure.
-        """
-        try:
-            # Resolve severity and message for the given symbol
-            severity, message = self.error_resolver.resolve(symbol, *args)
-
-            # Capture current timestamp and host information
-            current_time = datetime.datetime.now(datetime.timezone.utc)
-            host_name = socket.gethostname()
-
-            job_id = kwargs.get("job_id")
-
-            if job_id is None:
-                # Construct parameters for insertion
-                insert_parameters = self._build_insert_parameters(
-                    symbol, severity, message, current_time, host_name, **kwargs
-                )
-                logging.debug(f"Inserting job with parameters: {insert_parameters}")
-                job_id = self._insert_job(insert_parameters)
-            else:
-                # Construct parameters for update
-                update_parameters = self._build_update_parameters(
-                    symbol, severity, message, current_time, **kwargs
-                )
-                logging.debug(f"Updating job with parameters: {update_parameters}")
-                self._update_job(update_parameters)
-
-            LOG_DB_WRITE_SUCCESS.inc()  # Increment Prometheus counter for success
-            return job_id
-        except Exception as e:
-            LOG_DB_WRITE_FAILURE.inc()  # Increment Prometheus counter for failure
-
-            # Log detailed error information for diagnostics
-            logging.error(f"Logging job failed: {e}")
-            logging.debug(f"Symbol: {symbol}, Parameters: {kwargs}")
-
-            # Fallback logging for resilience
-            self._fallback_log(symbol, str(e), kwargs)
 
     def _fallback_log(self, symbol, message, kwargs):
         """

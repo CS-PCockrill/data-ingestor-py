@@ -10,6 +10,7 @@ class Logger(ABC):
             *args: Positional arguments for the error resolver.
             symbol (str): Unique identifier for the log type (e.g., error or info).
             **kwargs: Additional metadata fields for the log.
+            :param schema:
         """
         pass
 

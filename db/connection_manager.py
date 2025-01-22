@@ -39,9 +39,10 @@ class ConnectionManager(ABC):
 
 
 class PostgresConnectionManager(ConnectionManager):
-    def __init__(self, db_config):
+    def __init__(self, db_config, schema=None):
         super().__init__(db_config)
         self.query_builder = PostgresQueryBuilder(db_config["tableName"])
+        self.schema = schema or {}
 
     def connect(self):
         try:

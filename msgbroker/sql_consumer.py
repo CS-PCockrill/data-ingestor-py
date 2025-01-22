@@ -1,3 +1,4 @@
+import datetime
 import logging
 from threading import Lock
 
@@ -40,6 +41,7 @@ class SQLConsumer(Consumer):
             symbol="GS2001W",
             job_name=f"Consume Records for {self.producer.artifact_name}",
             artifact_name=self.producer.artifact_name,
+            start_time=datetime.datetime.now(datetime.timezone.utc),
             success=False,
         )
 
@@ -60,6 +62,7 @@ class SQLConsumer(Consumer):
                 job_name=f"Consume Records for {self.producer.artifact_name}",
                 artifact_name=self.producer.artifact_name,
                 error_message=str(e),
+                end_time=datetime.datetime.now(datetime.timezone.utc),
                 job_id=job_id,
                 success=False,
             )
@@ -79,6 +82,7 @@ class SQLConsumer(Consumer):
                 artifact_name=self.producer.artifact_name,
                 job_id=job_id,
                 success=not self.error,
+                end_time=datetime.datetime.now(datetime.timezone.utc),
             )
 
     def process_record(self, record):

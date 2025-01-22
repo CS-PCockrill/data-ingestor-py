@@ -98,6 +98,7 @@ class ProcessorFactory:
             config["tableName"],
             config["errorDefinitionSourceLocation"],
             config["logsTableName"],
+            config["logsSchema"]
         )
         logger = LoggerFactory.create_logger(interface_id, connection_manager, logger_context)
 
