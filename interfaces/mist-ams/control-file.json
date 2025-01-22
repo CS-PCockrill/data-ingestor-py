@@ -5,6 +5,7 @@
   "tableName": "SFLW_RECS",
   "logsTableName": "SS_LOGS",
   "logsSchema": {
+    "job_id": "id",
     "job_name": "job_name",
     "job_type": "job_type",
     "symbol": "symb",
@@ -19,7 +20,8 @@
     "table_name": "table_name",
     "artifact_name": "artifact_name",
     "user_id": "user_id",
-    "host_name": "host_name"
+    "host_name": "host_name",
+    "duration": "duration"
   },
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",

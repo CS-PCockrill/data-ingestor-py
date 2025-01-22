@@ -110,7 +110,7 @@ class SQLLogger(Logger):
             if key in kwargs:
                 parameters[db_column] = kwargs[key]
 
-        logging.debug(f"Constructed parameters: {parameters}")
+        logging.info(f"Constructed parameters: {parameters}")
         return parameters
 
     def log_job(self, *args, symbol, **kwargs):
@@ -130,7 +130,7 @@ class SQLLogger(Logger):
         """
         try:
             severity, message = self.error_resolver.resolve(symbol, *args)
-            current_time = datetime.datetime.now(datetime.timezone.utc)
+            current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
             host_name = socket.gethostname()
 
             job_id = kwargs.get("job_id")
