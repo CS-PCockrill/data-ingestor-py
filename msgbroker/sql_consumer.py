@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 from threading import Lock
 
@@ -178,7 +179,7 @@ class SQLConsumer(Consumer):
 
                 self.logger.log_job(
                     query=query,
-                    values=values,
+                    values=json.dumps(values),
                     symbol="GS2001W",
                     job_name=f"Batch Insert for {self.producer.artifact_name}",
                     artifact_name=self.producer.artifact_name,
@@ -193,7 +194,7 @@ class SQLConsumer(Consumer):
         except Exception as e:
             self.logger.log_job(
                 query=query,
-                values=values,
+                values=json.dumps(values),
                 symbol="GS2001W",
                 job_name=f"Batch Insert for {self.producer.artifact_name}",
                 artifact_name=self.producer.artifact_name,
