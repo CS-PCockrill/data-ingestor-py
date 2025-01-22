@@ -43,6 +43,7 @@ class SQLConsumer(Consumer):
             artifact_name=self.producer.artifact_name,
             start_time=datetime.datetime.now(datetime.timezone.utc),
             success=False,
+            status="IN PROGRESS"
         )
 
         try:
@@ -65,6 +66,7 @@ class SQLConsumer(Consumer):
                 end_time=datetime.datetime.now(datetime.timezone.utc),
                 job_id=job_id,
                 success=False,
+                status="ERROR"
             )
             logging.error(f"SQLConsumer encountered an error while consuming records: {e}")
             METRICS["errors"].inc()
@@ -83,6 +85,7 @@ class SQLConsumer(Consumer):
                 job_id=job_id,
                 success=not self.error,
                 end_time=datetime.datetime.now(datetime.timezone.utc),
+                status="COMPLETED"
             )
 
     def process_record(self, record):
@@ -97,6 +100,7 @@ class SQLConsumer(Consumer):
                 symbol="GS2001W",
                 job_name="Transform Record",
                 artifact_name=self.producer.artifact_name,
+                status="IN PROGRESS",
             )
             transformed_record = {
                 db_column: record.get(json_key)
@@ -111,6 +115,7 @@ class SQLConsumer(Consumer):
                 artifact_name=self.producer.artifact_name,
                 job_id=job_id,
                 success=True,
+                status="SUCCESS",
             )
         except Exception as e:
             self.logger.log_job(
@@ -120,6 +125,7 @@ class SQLConsumer(Consumer):
                 error_message=str(e),
                 job_id=job_id,
                 success=False,
+                status="ERROR"
             )
             logging.error(f"Error processing record: {e}")
             METRICS["errors"].inc()
@@ -138,6 +144,7 @@ class SQLConsumer(Consumer):
                     artifact_name=self.producer.artifact_name,
                     success=False,
                     error_message="No records to insert.",
+                    status="WARNING"
                 )
                 logging.warning("Insert batch called with no records to process.")
                 return
@@ -146,6 +153,7 @@ class SQLConsumer(Consumer):
                 symbol="GS2001W",
                 job_name=f"Batch Insert for {self.producer.artifact_name}",
                 artifact_name=self.producer.artifact_name,
+                status="IN PROGRESS",
             )
 
             with self.conn.cursor() as cur:
@@ -170,6 +178,7 @@ class SQLConsumer(Consumer):
                     artifact_name=self.producer.artifact_name,
                     job_id=job_id,
                     success=True,
+                    status="SUCCESS",
                 )
                 METRICS["records_processed"].inc(len(self.batch))
                 self.batch.clear()
@@ -183,6 +192,7 @@ class SQLConsumer(Consumer):
                 job_id=job_id,
                 success=False,
                 error_message=str(e),
+                status="ERROR"
             )
             logging.error(f"Failed to insert batch: {e}")
             self.conn.rollback()
@@ -203,6 +213,7 @@ class SQLConsumer(Consumer):
                     artifact_name=self.producer.artifact_name,
                     success=False,
                     error_message="Rollback due to errors encountered.",
+                    status="ERROR"
                 )
                 logging.error(f"Finalizing consumer for {self.producer.artifact_name} with rollback due to errors.")
             else:
@@ -212,6 +223,7 @@ class SQLConsumer(Consumer):
                     job_name=f"Finalize Consumer for {self.producer.artifact_name}",
                     artifact_name=self.producer.artifact_name,
                     success=True,
+                    status="SUCCESS",
                 )
                 logging.info(f"Finalizing consumer for {self.producer.artifact_name} with commit.")
         except Exception as e:
@@ -221,6 +233,7 @@ class SQLConsumer(Consumer):
                 artifact_name=self.producer.artifact_name,
                 success=False,
                 error_message=str(e),
+                status="ERROR"
             )
             logging.error(f"Error finalizing consumer for {self.producer.artifact_name}: {e}")
             METRICS["errors"].inc()
