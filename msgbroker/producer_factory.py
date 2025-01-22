@@ -1,3 +1,6 @@
+import logging
+
+
 class ProducerFactory:
     """
     Factory for dynamically creating producers based on interface ID.
@@ -31,5 +34,7 @@ class ProducerFactory:
         """
         if interface_id not in cls._registry:
             raise ValueError(f"Producer for interface '{interface_id}' not registered.")
+
+        logging.info(f"Creating producer for interface ID '{interface_id}' with kwargs: {kwargs}")
         producer_class = cls._registry[interface_id]
         return producer_class(*args, **kwargs)

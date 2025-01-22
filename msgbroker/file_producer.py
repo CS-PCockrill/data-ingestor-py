@@ -12,7 +12,7 @@ class FileProducer(Producer):
     Producer that reads data from files (JSON/XML) and pushes records to a queue.
     """
 
-    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="jsonSchema"):
+    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records"):
         self.queue = Queue(maxsize=maxsize)
         self.file_path = file_path
         self.file_type = file_type
