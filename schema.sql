@@ -28,7 +28,7 @@ CREATE TABLE ss_logs (
     symb VARCHAR(10) NOT NULL,          -- Symbol for the error code (e.g., GS6782E)
     severity VARCHAR(1),                -- Severity level (I, W, E, S)
     status VARCHAR(50) NOT NULL,        -- Status of the job (e.g., IN PROGRESS, SUCCESS, FAILURE)
-    start_time TIMESTAMP NOT NULL,      -- Start time of the job
+    start_time TIMESTAMP,      -- Start time of the job
     end_time TIMESTAMP,                 -- End time of the job (nullable)
     message TEXT,                       -- Log message
     error_message TEXT,                 -- Error details or additional information
