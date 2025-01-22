@@ -48,13 +48,15 @@ class SQLConsumer(Consumer):
         )
 
         try:
+            count = 0
             while True:
                 record = self.producer.consume()
                 if record is None:
                     break  # Signal that production is complete
 
-                logging.info(f"Processing record: {record}")
+                logging.info(f"Processing record: {record} COUNT: {count}")
                 self.process_record(record)
+                count += 1
 
                 if len(self.batch) >= self.batch_size:
                     self._insert_batch()
