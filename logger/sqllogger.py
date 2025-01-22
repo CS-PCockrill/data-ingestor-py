@@ -138,7 +138,7 @@ class SQLLogger(Logger):
             if job_id is None:
                 # Insert operation
                 insert_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, **kwargs
+                    start_time=current_time, symbol=symbol, severity=severity, message=message, **kwargs
                 )
                 insert_query = self.query_builder.build_insert_query(insert_params.keys(), batch=False)
                 logging.info(f"Inserting {symbol} into {host_name} table...\nINSERT QUERY: {insert_query}")
@@ -146,7 +146,7 @@ class SQLLogger(Logger):
             else:
                 # Update operation
                 update_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, **kwargs
+                    end_time=current_time, symbol=symbol, severity=severity, message=message, **kwargs
                 )
                 update_query = self.query_builder.build_update_query(update_params.keys())
                 logging.info(f"Updating {symbol} into {host_name} table...\nUPDATE QUERY: {update_query}")
