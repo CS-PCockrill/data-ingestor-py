@@ -131,14 +131,14 @@ def determine_file_type_and_schema(file_name):
 
     # Define mappings of file extensions to types and schemas
     file_type_mapping = {
-        ".json": {"file_type": "json", "schema_tag": "jsonTagName"},
-        ".xml": {"file_type": "xml", "schema_tag": "xmlTagName"},
+        ".json": {"file_type": "json", "schema_tag": "jsonTagName", "schema": "jsonSchema"},
+        ".xml": {"file_type": "xml", "schema_tag": "xmlTagName", "schema": "xmlSchema"},
         # Add more mappings here if needed
     }
 
     # Retrieve file_type and schema_tag or raise an error for unsupported extensions
     if file_extension in file_type_mapping:
-        return file_type_mapping[file_extension]["file_type"], file_type_mapping[file_extension]["schema_tag"]
+        return file_type_mapping[file_extension]["file_type"], file_type_mapping[file_extension]["schema_tag"], file_type_mapping[file_extension]["schema"]
     else:
         raise ValueError(f"Unsupported file extension: {file_extension}")
 
@@ -243,7 +243,7 @@ def main():
     file_path = os.path.join(config["inputDirectory"], file_name)
 
     # Dynamically determine file_type and schema_tag
-    file_type, schema_tag = determine_file_type_and_schema(file_name)
+    file_type, schema_tag, schema = determine_file_type_and_schema(file_name)
 
     # Update producerConfig
     config["producerConfig"].update({
@@ -257,7 +257,7 @@ def main():
         "logger": None,
         "table_name": config.get("tableName"),
         "producer": None,
-        "key_column_mapping": config.get(schema_tag),  # Dynamically use schema_tag
+        "key_column_mapping": config.get(schema),  # Dynamically use schema_tag
         "batch_size": 5,
     })
 
