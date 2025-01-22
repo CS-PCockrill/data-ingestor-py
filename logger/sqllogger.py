@@ -141,6 +141,7 @@ class SQLLogger(Logger):
                     symbol=symbol, severity=severity, message=message, **kwargs
                 )
                 insert_query = self.query_builder.build_insert_query(insert_params.keys(), batch=False)
+                logging.info(f"Inserting {symbol} into {host_name} table...\nINSERT QUERY: {insert_query}")
                 job_id = self._execute_query(insert_query, tuple(insert_params.values()))
             else:
                 # Update operation
@@ -148,6 +149,7 @@ class SQLLogger(Logger):
                     symbol=symbol, severity=severity, message=message, **kwargs
                 )
                 update_query = self.query_builder.build_update_query(update_params.keys())
+                logging.info(f"Updating {symbol} into {host_name} table...\nUPDATE QUERY: {update_query}")
                 self._execute_query(update_query, tuple(update_params.values()) + (job_id,))
 
             LOG_DB_WRITE_SUCCESS.inc()
