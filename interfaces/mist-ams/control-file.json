@@ -5,7 +5,6 @@
   "tableName": "SFLW_RECS",
   "logsTableName": "SS_LOGS",
   "logsSchema": {
-    "job_id": "id",
     "job_name": "job_name",
     "job_type": "job_type",
     "symbol": "symb",
