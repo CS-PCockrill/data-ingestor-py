@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from queue import Queue
 import xml.etree.ElementTree as ET
 
@@ -12,7 +13,8 @@ class FileProducer(Producer):
     Producer that reads data from files (JSON/XML) and pushes records to a queue.
     """
 
-    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records"):
+    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", **kwargs):
+        super().__init__(**kwargs)
         self.queue = Queue(maxsize=maxsize)
         self.file_path = file_path
         self.file_type = file_type
@@ -31,17 +33,52 @@ class FileProducer(Producer):
         self.file_path = file_path
         self.file_type = file_type
         self.schema_tag = schema_tag
-        self.artifact_name = file_path.split('/')[-1]
+
+        if os.path.isfile(file_path):
+            self.artifact_name = os.path.basename(file_path)
+        elif os.path.isdir(file_path):
+            self.artifact_name = file_path  # Directory name for logging purposes
+        else:
+            raise ValueError(f"Invalid file path: {file_path}")
+
+    def _get_files(self):
+        """
+        Retrieves the list of files to process.
+
+        Returns:
+            list: List of file paths to process.
+        """
+        if os.path.isfile(self.file_path):
+            return [self.file_path]
+        elif os.path.isdir(self.file_path):
+            return [
+                os.path.join(self.file_path, f)
+                for f in os.listdir(self.file_path)
+                if f.endswith(".json") or f.endswith(".xml")
+            ]
+        else:
+            raise ValueError(f"Invalid file path: {self.file_path}")
 
     def produce_from_source(self):
         """
-        Reads the file and produces records into the queue.
+        Reads files and produces records into the queue.
         """
-        if not self.file_path or not self.file_type or not self.schema_tag:
-            raise ValueError("Source not set for FileProducer")
-        for record in self._process_file(self.file_path, self.schema_tag, self.file_type):
-            self.produce(record)
-            METRICS["records_read"].inc()
+        if not self.file_path:
+            raise ValueError("File path not set for FileProducer")
+
+        files_to_process = self._get_files()
+        if not files_to_process:
+            raise ValueError(f"No valid JSON or XML files found in {self.file_path}")
+
+        for file in files_to_process:
+            # Determine file type based on the extension if not explicitly set
+            file_type = "json" if file.endswith(".json") else "xml"
+            schema_tag = "Records" if file_type == "json" else "Record"
+
+            logging.info(f"Processing file: {file} as {file_type}")
+            for record in self._process_file(file, schema_tag, file_type):
+                self.produce(record)
+                METRICS["records_read"].inc()
 
         self.signal_done()
 
@@ -85,7 +122,6 @@ class FileProducer(Producer):
         """
         parser = self.parse_json_file if file_type == "json" else self.parse_xml_file
         for record in parser(file_path, schema_tag):
-            logging.info("===== RECORD: %s", record)
             yield record
 
     def _flatten_dict(self, data):

@@ -42,7 +42,6 @@ def setup_fallback_logger():
     logging.debug("Fallback logger successfully configured.")  # Debug-level log for setup confirmation
     return fallback_logger
 
-
 class LoggerContext:
     """
     Encapsulates contextual information for logging operations.
@@ -138,7 +137,7 @@ class SQLLogger(Logger):
             if job_id is None:
                 # Insert operation
                 insert_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, **kwargs
+                    symbol=symbol, severity=severity, message=message, host_name=host_name, **kwargs
                 )
                 insert_query = self.query_builder.build_insert_query(insert_params.keys(), batch=False)
                 # logging.info(f"Inserting {symbol} into {host_name} table...\nINSERT QUERY: {insert_query}")
@@ -146,7 +145,7 @@ class SQLLogger(Logger):
             else:
                 # Update operation
                 update_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, **kwargs
+                    symbol=symbol, severity=severity, message=message, host_name=host_name, **kwargs
                 )
                 update_query = self.query_builder.build_update_query(update_params.keys())
                 # logging.info(f"Updating {symbol} into {host_name} table...\nUPDATE QUERY: {update_query}")
@@ -235,7 +234,7 @@ class SQLLogger(Logger):
 
             # Serialize the log entry to JSON
             serialized_entry = json.dumps(log_entry)
-            logging.debug(f"Formatted log entry: {serialized_entry}")
+            logging.debug(serialized_entry)
             return serialized_entry
         except TypeError as e:
             logging.error(f"Failed to format log entry due to non-serializable data: {kwargs}. Error: {e}")

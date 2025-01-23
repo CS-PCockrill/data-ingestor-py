@@ -62,5 +62,10 @@
     "scan_time": "SCAN_TIME"
   },
   "producerConfig": {},
-  "consumerConfig": {}
+  "consumerConfig": {
+    "logger": null,
+    "table_name": "SFLW_RECS",
+    "producer": null,
+    "batch_size": 5
+  }
 }

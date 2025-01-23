@@ -164,59 +164,6 @@ def resource_manager(processor, logger):
         except Exception as e:
             logging.warning(f"Failed to close the logger: {e}")
 
-# def main():
-#     """
-#     Main entry point for the script.
-#     """
-#     # 1. Register all components
-#     register_components()
-#
-#     # 2. Parse command-line arguments
-#     args = parse_arguments()
-#
-#     # 3. Validate interface ID and load configuration
-#     interface_id = args.interface_id
-#     if interface_id not in ProcessorFactory.get_interface_configs().keys():
-#         logging.error(f"Interface ID '{interface_id}' is not registered.")
-#         raise ValueError(f"Invalid Interface ID: {interface_id}")
-#
-#     # Load the configuration for the interface
-#     control_file_path = ProcessorFactory.get_control_file_path(interface_id)
-#     config = load_json_mapping(control_file_path)
-#
-#     # Determine source type and invoke processor
-#     try:
-#         # Create the processor
-#         processor = ProcessorFactory.create_processor(interface_id, config)
-#
-#         # Check for supported file extensions to determine source type
-#         file_extensions = ProcessorFactory.get_supported_file_extensions(interface_id)
-#
-#         if file_extensions:
-#             # Handle file-based source
-#             files = get_files_to_process(config, args.file, extensions=file_extensions)
-#             if not files:
-#                 logging.error(f"No files with valid extensions found in {config['inputDirectory']}.")
-#                 raise ValueError(f"No files to process in {config['inputDirectory']}.")
-#             processor.process_files(files)
-#         else:
-#             # Handle non-file-based source and destination
-#             producer = ProducerFactory.create_producer(interface_id, **config.get("producerConfig", {}))
-#             consumer = ConsumerFactory.create_consumer(interface_id, **config.get("consumerConfig", {}))
-#             processor.process(producer=producer, consumer=consumer)
-#
-#         # Write metrics if supported
-#         if hasattr(processor, "write_metrics_to_file"):
-#             processor.write_metrics_to_file("prometheus_metrics.txt")
-#
-#     except Exception as e:
-#         logging.error(f"An error occurred during processing: {e}")
-#         raise
-#     finally:
-#         if hasattr(processor, "close"):
-#             processor.close()
-#
-#     logging.info("Processing completed successfully.")
 
 
 def main():
@@ -245,36 +192,33 @@ def main():
     # Dynamically determine file_type and schema_tag
     file_type, schema_tag, schema = determine_file_type_and_schema(file_name)
 
-    # Update producerConfig
+    # Update producerConfig with computed values. Each key is a parameter in the respective Producer subclass
+    # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
     config["producerConfig"].update({
         "file_path": file_path,
         "file_type": file_type,
         "schema_tag": schema_tag,
     })
 
-    # Update consumerConfig
-    config["consumerConfig"].update({
-        "logger": None,
-        "table_name": config.get("tableName"),
-        "producer": None,
-        "key_column_mapping": config.get(schema),  # Dynamically use schema_tag
-        "batch_size": 5,
-    })
+    logging.info(f"Processing with producer configuration: {config['producerConfig']}")
 
     try:
-        # Create processor
+        # Create processor. To create new processors create subclasses of fileprocessor.Processor, then register
+        # new interfaces in config.interfaces_config.INTERFACES
         processor = ProcessorFactory.create_processor(interface_id, config)
 
         # Create producer dynamically
         producer = ProducerFactory.create_producer(interface_id, **config["producerConfig"])
 
-        # Update the consumerConfig to reference the created producer and logger
+        # Update the consumerConfig to reference the created producer and logger. Each key is a parameter in the respective Consumer subclass.
+        # For example: SQLConsumer(logger, table_name, producer, connection_manager, key_column_mapping, batch_size=5)
         config["consumerConfig"].update({"producer": producer})
         config["consumerConfig"].update({"logger": processor.logger})
         config["consumerConfig"].update({"connection_manager": DBConnectionFactory.get_connection_manager(config['dbType'], config)
 })
 
-        # Create consumer dynamically
+        # Create consumer. To create new consumers create subclasses of msgbroker.Consumer, then register new interfaces
+        # in config.interfaces_config.INTERFACES
         consumer = ConsumerFactory.create_consumer(interface_id, **config["consumerConfig"])
 
         # Process records using the processor
