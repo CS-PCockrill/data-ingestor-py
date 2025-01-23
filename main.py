@@ -216,6 +216,7 @@ def main():
         config["consumerConfig"].update({"logger": processor.logger})
         config["consumerConfig"].update({"connection_manager": DBConnectionFactory.get_connection_manager(config['dbType'], config)
 })
+        config["consumerConfig"].update({"key_column_mapping": config[schema]})
 
         # Create consumer. To create new consumers create subclasses of msgbroker.Consumer, then register new interfaces
         # in config.interfaces_config.INTERFACES
