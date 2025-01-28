@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 class Producer(ABC):
-    def __init__(self, **kwargs):
+    def __init__(self, logger, **kwargs):
         """
         Abstract base class for producers.
 
@@ -11,7 +11,9 @@ class Producer(ABC):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+        self.logger = logger
         self.artifact_name = None  # Common field for all producers
+        self.ctx_id = None
 
     @abstractmethod
     def produce(self, message):
@@ -20,6 +22,13 @@ class Producer(ABC):
     @abstractmethod
     def close(self):
         pass
+
+    @abstractmethod
+    def get_context_id(self):
+        """
+        Retrieves the current context ID for the Producer.
+        """
+        return self.ctx_id
 
 class Consumer(ABC):
     def __init__(self, producer, **kwargs):

@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 
 class Logger(ABC):
+    def __init__(self):
+        self.context_id = None
+
     @abstractmethod
     def log_job(self, *args, symbol, **kwargs):
         """
@@ -20,3 +23,11 @@ class Logger(ABC):
         Abstract method for closing logger resources.
         """
         pass
+
+    @abstractmethod
+    def set_context_id(self, context_id):
+        self.context_id = context_id
+
+    @abstractmethod
+    def get_context_id(self):
+        return self.context_id

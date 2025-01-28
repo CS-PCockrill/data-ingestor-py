@@ -20,7 +20,8 @@
     "artifact_name": "artifact_name",
     "user_id": "user_id",
     "host_name": "host_name",
-    "duration": "duration"
+    "duration": "duration",
+    "ctx_id": "ctx_id"
   },
   "outputDirectory": "interfaces/mist-ams/archive",
   "inputDirectory": "interfaces/mist-ams/input-files",

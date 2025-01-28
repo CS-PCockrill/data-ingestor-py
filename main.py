@@ -192,20 +192,21 @@ def main():
     # Dynamically determine file_type and schema_tag
     file_type, schema_tag, schema = determine_file_type_and_schema(file_name)
 
-    # Update producerConfig with computed values. Each key is a parameter in the respective Producer subclass
-    # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
-    config["producerConfig"].update({
-        "file_path": file_path,
-        "file_type": file_type,
-        "schema_tag": schema_tag,
-    })
-
     logging.info(f"Processing with producer configuration: {config['producerConfig']}")
 
     try:
         # Create processor. To create new processors create subclasses of fileprocessor.Processor, then register
         # new interfaces in config.interfaces_config.INTERFACES
         processor = ProcessorFactory.create_processor(interface_id, config)
+
+        # Update producerConfig with computed values. Each key is a parameter in the respective Producer subclass
+        # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
+        config["producerConfig"].update({
+            "file_path": file_path,
+            "file_type": file_type,
+            "schema_tag": schema_tag,
+            "logger": processor.logger,
+        })
 
         # Create producer dynamically
         producer = ProducerFactory.create_producer(interface_id, **config["producerConfig"])

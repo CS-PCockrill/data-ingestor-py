@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import uuid
 from queue import Queue
 import xml.etree.ElementTree as ET
 
@@ -13,8 +14,8 @@ class FileProducer(Producer):
     Producer that reads data from files (JSON/XML) and pushes records to a queue.
     """
 
-    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", logger=None, **kwargs):
+        super().__init__(logger=logger, **kwargs)
         self.queue = Queue(maxsize=maxsize)
         self.file_path = file_path
         self.file_type = file_type
@@ -75,6 +76,9 @@ class FileProducer(Producer):
             file_type = "json" if file.endswith(".json") else "xml"
             schema_tag = "Records" if file_type == "json" else "Record"
 
+            self.logger.set_context_id(uuid.uuid4())
+            logging.info(f"Processing file: {file} with Context ID: {self.logger.get_context_id()}")
+
             logging.info(f"Processing file: {file} as {file_type}")
             for record in self._process_file(file, schema_tag, file_type):
                 self.produce(record)
@@ -107,6 +111,12 @@ class FileProducer(Producer):
         while not self.queue.empty():
             self.queue.get()
             self.queue.task_done()
+
+    def get_context_id(self):
+        """
+        Retrieves the current context ID for the Producer.
+        """
+        return self.ctx_id
 
     def _process_file(self, file_path, schema_tag, file_type="json"):
         """

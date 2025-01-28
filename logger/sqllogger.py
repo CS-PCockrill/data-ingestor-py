@@ -4,6 +4,8 @@ import json
 import socket
 
 import logging.handlers
+import uuid
+
 from prometheus_client import Counter, Histogram
 
 from logger.logger import Logger
@@ -89,6 +91,7 @@ class SQLLogger(Logger):
         self.query_builder.set_schema(context.logger_schema)
         self.error_resolver = ErrorResolver(self.conn, context.error_table)
         self.fallback_logger = setup_fallback_logger()
+        # self.ctx_id = uuid.uuid4().hex
         logging.debug("SQLLogger initialized successfully.")
 
     def _build_parameters(self, **kwargs):
@@ -137,7 +140,7 @@ class SQLLogger(Logger):
             if job_id is None:
                 # Insert operation
                 insert_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, host_name=host_name, **kwargs
+                    symbol=symbol, severity=severity, message=message, host_name=host_name, ctx_id=self.get_context_id(), **kwargs
                 )
                 insert_query = self.query_builder.build_insert_query(insert_params.keys(), batch=False)
                 # logging.info(f"Inserting {symbol} into {host_name} table...\nINSERT QUERY: {insert_query}")
@@ -145,7 +148,7 @@ class SQLLogger(Logger):
             else:
                 # Update operation
                 update_params = self._build_parameters(
-                    symbol=symbol, severity=severity, message=message, host_name=host_name, **kwargs
+                    symbol=symbol, severity=severity, message=message, host_name=host_name, ctx_id=self.get_context_id(), **kwargs
                 )
                 update_query = self.query_builder.build_update_query(update_params.keys())
                 # logging.info(f"Updating {symbol} into {host_name} table...\nUPDATE QUERY: {update_query}")
@@ -225,6 +228,7 @@ class SQLLogger(Logger):
                 "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),  # ISO8601 format for timestamp
                 "host": socket.gethostname(),  # Hostname of the machine running the logger
                 "context": {
+                    "id": self.get_context_id(),
                     "interface_type": self.context.interface_type,  # Name of interface were logging for
                     "user_id": self.context.user_id,  # User associated with the log entry
                     "table_name": self.context.table_name,  # Primary table related to the log

@@ -23,6 +23,7 @@ CREATE TABLE sflw_recs (
 -- Create the ss_logs table
 CREATE TABLE ss_logs (
     id SERIAL PRIMARY KEY,              -- Unique identifier for each log entry
+    ctx_id VARCHAR(100) NOT NULL,
     job_name VARCHAR(255) NOT NULL,     -- Name of the job
     job_type VARCHAR(100),              -- Type/category of the job
     symb VARCHAR(10) NOT NULL,          -- Symbol for the error code (e.g., GS6782E)
