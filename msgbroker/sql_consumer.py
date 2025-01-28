@@ -140,7 +140,7 @@ class SQLConsumer(Consumer):
 
     @METRICS["batch_insert_time"].time()
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
-    def _insert_batch(self, ctx_id):
+    def _insert_batch(self):
         """
         Inserts the current batch of records into the database.
         """
@@ -154,7 +154,6 @@ class SQLConsumer(Consumer):
                     error_message="No records to insert.",
                     status="WARNING",
                     start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    ctx_id=ctx_id
                 )
                 logging.warning("Insert batch called with no records to process.")
                 return
@@ -165,7 +164,6 @@ class SQLConsumer(Consumer):
                 artifact_name=self.producer.artifact_name,
                 status="IN PROGRESS",
                 start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                ctx_id=ctx_id
             )
 
             with self.conn.cursor() as cur:
@@ -192,7 +190,6 @@ class SQLConsumer(Consumer):
                     success=True,
                     status="SUCCESS",
                     end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    ctx_id=ctx_id
 
                 )
                 METRICS["records_processed"].inc(len(self.batch))
@@ -210,7 +207,6 @@ class SQLConsumer(Consumer):
                 error_message=str(e),
                 status="ERROR",
                 end_time = datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                ctx_id=ctx_id
 
             )
             logging.error(f"Failed to insert batch: {e}")
