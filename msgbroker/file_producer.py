@@ -76,7 +76,7 @@ class FileProducer(Producer):
             file_type = "json" if file.endswith(".json") else "xml"
             schema_tag = "Records" if file_type == "json" else "Record"
 
-            self.logger.set_context_id(uuid.uuid4())
+            self.logger.set_context_id(str(uuid.uuid4()))
             logging.info(f"Processing file: {file} with Context ID: {self.logger.get_context_id()}")
 
             logging.info(f"Processing file: {file} as {file_type}")
