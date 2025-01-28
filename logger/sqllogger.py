@@ -252,3 +252,9 @@ class SQLLogger(Logger):
             self.conn.close()
             logging.info("SQL Logger connection closed.")
 
+    def set_context_id(self, context_id):
+        self.context_id = context_id
+
+    def get_context_id(self):
+        return self.context_id
+
