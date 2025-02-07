@@ -15,7 +15,7 @@ class ExcelProducer(Producer):
     TABLE_NAME_ROW = 4  # Row 4 in Excel (table name)
     FIRST_RECORD_ROW = 5  # Row 5 in Excel (first actual record)
 
-    def __init__(self, maxsize=1000, file_path="", logger=None, **kwargs):
+    def __init__(self, maxsize=1000, config=None, file_path="", logger=None, **kwargs):
         """
         Initialize the ExcelProducer.
 
@@ -24,6 +24,7 @@ class ExcelProducer(Producer):
             logger (object): Logging utility.
         """
         super().__init__(logger, **kwargs)
+        self.config = config
         self.queue = Queue(maxsize=maxsize)
         self.file_path = file_path
 

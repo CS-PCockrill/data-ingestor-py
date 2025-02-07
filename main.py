@@ -178,6 +178,7 @@ def main():
         # Update producerConfig with computed values. Each key is a parameter in the respective Producer subclass
         # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
         config["producerConfig"].update({
+            "config": config,
             "file_path": file_path,
             "logger": processor.logger,
         })
