@@ -2,7 +2,6 @@
   "interfaceID": "MIST",
   "interfaceType": "MistAMS JSON/XML File",
   "dbType": "postgres",
-  "tableName": "SFLW_RECS",
   "logsTableName": "SS_LOGS",
   "logsSchema": {
     "job_name": "job_name",

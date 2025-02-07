@@ -1,8 +1,7 @@
 {
-  "type": "postgresql",
+  "dbType": "postgres",
   "interfaceID": "DMS",
   "interfaceType": "DMS Excel Templates",
-  "tableName": "SFLW_RECS",
   "outputDirectory": "interfaces/dms/archive",
   "inputDirectory": "interfaces/dms/input-files",
   "errorDefinitionSourceType": "db",
@@ -12,5 +11,13 @@
   "port": 5432,
   "database": "testdb",
   "user": "root",
-  "password": "password"
+  "password": "password",
+  "producerConfig": {},
+  "consumerConfig": {
+    "logger": null,
+    "table_name": "SFLW_RECS",
+    "producer": null,
+    "batch_size": 5,
+    "key_column_mapping": {}
+  }
 }
