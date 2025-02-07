@@ -8,7 +8,7 @@ from psycopg2.extras import execute_values  # Efficient bulk insert for PostgreS
 
 class ExcelConsumer(Consumer):
 
-    def __init__(self, logger, producer, connection_manager, batch_size=100):
+    def __init__(self, logger, producer, connection_manager, batch_size=100, **kwargs):
         """
         Initialize the ExcelConsumer.
 
