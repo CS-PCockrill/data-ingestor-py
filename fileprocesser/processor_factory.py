@@ -92,14 +92,33 @@ class ProcessorFactory:
         # Connection Manager and Logger
         db_type = config.get("dbType", "postgres").lower()
         connection_manager = DBConnectionFactory.get_connection_manager(db_type, config)
+
+        # Define default values
+        default_values = {
+            "interfaceType": "UNKNOWN_INTERFACE",
+            "user": "SYSTEM",
+            "consumerConfig": {"table_name": "UNKNOWN_TABLE"},
+            "errorDefinitionSourceLocation": "UNKNOWN_SOURCE",
+            "logsTableName": "UNKNOWN_LOGS_TABLE",
+            "logsSchema": "UNKNOWN_LOGS_SCHEMA"
+        }
+
+        # Log missing keys
+        for key in default_values.keys():
+            if key not in config or (
+                    key in ["consumerConfig"] and "table_name" not in config.get("consumerConfig", {})):
+                logging.warning(f"Missing key in config: {key}, using default value: {default_values[key]}")
+
+        # Initialize logger context with defaults
         logger_context = LoggerContext(
-            config["interfaceType"],
-            config["user"],
-            config["consumerConfig"]["table_name"],
-            config["errorDefinitionSourceLocation"],
-            config["logsTableName"],
-            config["logsSchema"]
+            config.get("interfaceType", default_values["interfaceType"]),
+            config.get("user", default_values["user"]),
+            config.get("consumerConfig", {}).get("table_name", default_values["consumerConfig"]["table_name"]),
+            config.get("errorDefinitionSourceLocation", default_values["errorDefinitionSourceLocation"]),
+            config.get("logsTableName", default_values["logsTableName"]),
+            config.get("logsSchema", default_values["logsSchema"])
         )
+
         logger = LoggerFactory.create_logger(interface_id, connection_manager, logger_context)
 
         # Create the processor
