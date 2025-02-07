@@ -95,7 +95,7 @@ class ProcessorFactory:
         logger_context = LoggerContext(
             config["interfaceType"],
             config["user"],
-            config["tableName"],
+            config["consumerConfig"]["table_name"],
             config["errorDefinitionSourceLocation"],
             config["logsTableName"],
             config["logsSchema"]
