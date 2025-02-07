@@ -142,30 +142,6 @@ def determine_file_type_and_schema(file_name):
     else:
         raise ValueError(f"Unsupported file extension: {file_extension}")
 
-@contextmanager
-def resource_manager(processor, logger):
-    """
-    Context manager to handle resource cleanup.
-    Args:
-        processor (FileProcessor): File processor instance.
-        logger (SQLLogger): Logger instance.
-    Yields:
-        None
-    """
-    try:
-        yield
-    finally:
-        try:
-            processor.close()
-        except Exception as e:
-            logging.warning(f"Failed to close the processor: {e}")
-        try:
-            logger.close()
-        except Exception as e:
-            logging.warning(f"Failed to close the logger: {e}")
-
-
-
 def main():
     """
     Main entry point for the script.
@@ -203,8 +179,6 @@ def main():
         # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
         config["producerConfig"].update({
             "file_path": file_path,
-            "file_type": file_type,
-            "schema_tag": schema_tag,
             "logger": processor.logger,
         })
 

@@ -6,7 +6,7 @@ from threading import Lock
 from psycopg2.extras import execute_values
 from tenacity import stop_after_attempt, retry, wait_exponential
 
-from config.config import METRICS
+from config.config import METRICS, FILE_DELIMITER
 from msgbroker.producer_consumer import Consumer
 
 
@@ -34,9 +34,67 @@ class SQLConsumer(Consumer):
         self.query_builder = self.connection_manager.get_query_builder(table_name)  # Get QueryBuilder from the connection manager
         self.error = False
 
+    # def consume(self):
+    #     """
+    #     Consumes records from the producer and processes them in batches.
+    #     """
+    #     job_id = self.logger.log_job(
+    #         symbol="GS2001W",
+    #         job_name=f"Consume Records for {self.producer.artifact_name}",
+    #         artifact_name=self.producer.artifact_name,
+    #         start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    #         success=False,
+    #         status="IN PROGRESS"
+    #     )
+    #
+    #     try:
+    #         while True:
+    #             record = self.producer.consume()
+    #             if record is None:
+    #                 if self.batch:
+    #                     self._insert_batch()
+    #                 break  # Signal that production is complete
+    #
+    #
+    #             self.batch.append(record)
+    #             if len(self.batch) >= self.batch_size:
+    #                 self._insert_batch()
+    #
+    #     except Exception as e:
+    #         self.logger.log_job(
+    #             symbol="GS2001W",
+    #             job_name=f"Consume Records for {self.producer.artifact_name}",
+    #             artifact_name=self.producer.artifact_name,
+    #             error_message=str(e),
+    #             end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    #             job_id=job_id,
+    #             success=False,
+    #             status="ERROR"
+    #         )
+    #         logging.error(f"SQLConsumer encountered an error while consuming records: {e}")
+    #         METRICS["errors"].inc()
+    #         self.error = True
+    #
+    #     finally:
+    #         # Insert any remaining records in the batch
+    #         if self.batch:
+    #             self._insert_batch()
+    #
+    #         # Mark the job as completed
+    #         self.logger.log_job(
+    #             symbol="GS2001W",
+    #             job_name=f"Consume Records for {self.producer.artifact_name}",
+    #             artifact_name=self.producer.artifact_name,
+    #             job_id=job_id,
+    #             success=not self.error,
+    #             end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    #             status="COMPLETED"
+    #         )
+
     def consume(self):
         """
         Consumes records from the producer and processes them in batches.
+        Dynamically updates key-column mapping when a new file is processed.
         """
         job_id = self.logger.log_job(
             symbol="GS2001W",
@@ -48,7 +106,6 @@ class SQLConsumer(Consumer):
         )
 
         try:
-            count = 0
             while True:
                 record = self.producer.consume()
                 if record is None:
@@ -56,7 +113,20 @@ class SQLConsumer(Consumer):
                         self._insert_batch()
                     break  # Signal that production is complete
 
+                # Detect metadata marker and update key-column mapping
+                if "marker" in record and record["marker"] == FILE_DELIMITER:
+                    if self.batch:
+                        self._insert_batch()  # Flush batch before schema switch
 
+                    # Update key-column mapping dynamically
+                    self.key_column_mapping = record["key_column_mapping"]
+
+                    self.query_builder = self.connection_manager.get_query_builder(self.table_name)
+                    logging.info(
+                        f"Updated table name: {self.table_name}, New Key-Column Mapping: {self.key_column_mapping}")
+                    continue  # Skip processing the metadata record
+
+                # Append record to batch
                 self.batch.append(record)
                 if len(self.batch) >= self.batch_size:
                     self._insert_batch()

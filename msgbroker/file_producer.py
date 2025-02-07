@@ -5,7 +5,7 @@ import uuid
 from queue import Queue
 import xml.etree.ElementTree as ET
 
-from config.config import METRICS
+from config.config import METRICS, FILE_DELIMITER
 from msgbroker.producer_consumer import Producer
 
 
@@ -14,33 +14,25 @@ class FileProducer(Producer):
     Producer that reads data from files (JSON/XML) and pushes records to a queue.
     """
 
-    def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", logger=None, **kwargs):
+    FILE_TYPES = {"json", "xml"}  # Supported file types
+
+    def __init__(self, maxsize=1000, config=None, file_path=None, file_type=None, schema_tag=None, logger=None, **kwargs):
         super().__init__(logger=logger, **kwargs)
         self.queue = Queue(maxsize=maxsize)
+        self.config = config
         self.file_path = file_path
-        self.file_type = file_type
-        self.schema_tag = schema_tag
+        self.file_type = file_type  # Auto-detected if None
+        self.schema_tag = schema_tag  # Auto-detected if None
         self.artifact_name = file_path
 
-    # def set_source(self, file_path, file_type, schema_tag):
-    #     """
-    #     Sets the source for the file-based producer.
-    #
-    #     Args:
-    #         file_path (str): Path to the input file.
-    #         file_type (str): File type, either 'json' or 'xml'.
-    #         schema_tag (str): Schema tag to extract records.
-    #     """
+    # def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", logger=None, **kwargs):
+    #     super().__init__(logger=logger, **kwargs)
+    #     self.queue = Queue(maxsize=maxsize)
     #     self.file_path = file_path
     #     self.file_type = file_type
     #     self.schema_tag = schema_tag
-    #
-    #     if os.path.isfile(file_path):
-    #         self.artifact_name = os.path.basename(file_path)
-    #     elif os.path.isdir(file_path):
-    #         self.artifact_name = file_path  # Directory name for logging purposes
-    #     else:
-    #         raise ValueError(f"Invalid file path: {file_path}")
+    #     self.artifact_name = file_path
+
 
     def _get_files(self):
         """
@@ -62,7 +54,8 @@ class FileProducer(Producer):
 
     def produce_from_source(self):
         """
-        Reads files and produces records into the queue.
+        Reads files from a directory (or single file) and produces records into the queue.
+        Dynamically determines the schema per file and passes key-column mapping as metadata.
         """
         if not self.file_path:
             raise ValueError("File path not set for FileProducer")
@@ -72,15 +65,25 @@ class FileProducer(Producer):
             raise ValueError(f"No valid JSON or XML files found in {self.file_path}")
 
         for file in files_to_process:
-            # Determine file type based on the extension if not explicitly set
+            # Determine file type dynamically
             file_type = "json" if file.endswith(".json") else "xml"
-            schema_tag = "Records" if file_type == "json" else "Record"
+
+            # Retrieve the appropriate schema mapping per file
+            schema_key = "jsonSchema" if file_type == "json" else "xmlSchema"
+            key_column_mapping = self.config[schema_key]
 
             self.logger.set_context_id(str(uuid.uuid4()))
-            logging.info(f"Processing file: {file} with Context ID: {self.logger.get_context_id()}")
+            logging.info(
+                f"Processing file: {file} with Context ID: {self.logger.get_context_id()} and Schema: {key_column_mapping}")
 
-            logging.info(f"Processing file: {file} as {file_type}")
-            for record in self._process_file(file, schema_tag, file_type):
+            # Pass metadata first
+            self.produce({
+                "marker": FILE_DELIMITER,
+                "key_column_mapping": key_column_mapping
+            })
+
+            # Process and enqueue records
+            for record in self._process_file(file, file_type):
                 self.produce(record)
                 METRICS["records_read"].inc()
 
@@ -118,21 +121,62 @@ class FileProducer(Producer):
         """
         return self.ctx_id
 
-    def _process_file(self, file_path, schema_tag, file_type="json"):
+    def _process_file(self, file_path, file_type):
         """
         Parses and flattens JSON/XML records from a file.
 
         Args:
             file_path (str): Path to the input file.
-            schema_tag (str): Schema tag to extract records.
             file_type (str): File type ('json' or 'xml').
 
         Yields:
             dict: Flattened records extracted from the file.
         """
-        parser = self.parse_json_file if file_type == "json" else self.parse_xml_file
-        for record in parser(file_path, schema_tag):
+        if file_type == "json":
+            parser = self._parse_json_file
+        elif file_type == "xml":
+            parser = self._parse_xml_file
+        else:
+            raise ValueError(f"Unsupported file type: {file_type}")
+
+        for record in parser(file_path):
             yield record
+
+    def _detect_json_schema_tag(self, data):
+        """
+        Detects the key containing an array of records in a JSON structure.
+
+        Args:
+            data (dict): JSON data loaded into a dictionary.
+
+        Returns:
+            str: The detected schema tag or an empty string if not found.
+        """
+        if isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, list):  # Look for the first array in the structure
+                    return key
+        return ""  # Default to empty string if no array is found
+
+    def _detect_xml_schema_tag(self, root):
+        """
+        Detects the most likely schema tag (e.g., "Record") by finding the most common
+        direct child element under the root.
+
+        Args:
+            root (xml.etree.ElementTree.Element): The root element of the XML document.
+
+        Returns:
+            str: The detected schema tag or "Record" as a fallback.
+        """
+        tag_counts = {}
+        for child in root:
+            tag_counts[child.tag] = tag_counts.get(child.tag, 0) + 1
+
+        # Get the most common child element under the root
+        detected_tag = max(tag_counts, key=tag_counts.get, default="Row")
+        logging.info(f"Detected XML schema tag: {detected_tag}")
+        return detected_tag
 
     def _flatten_dict(self, data):
         """
@@ -185,101 +229,137 @@ class FileProducer(Producer):
         logging.debug(f"Flattened dictionary to {len(nested_records)} records.")
         return nested_records
 
-    def parse_json_file(self, file_path, schema_tag="Records"):
+    def _parse_json_file(self, file_path):
         """
-        Parses and flattens JSON records from a file.
+        Parses and flattens JSON records from a file, dynamically detecting the schema tag.
 
         Args:
             file_path (str): Path to the JSON file.
-            schema_tag (str): Key to extract records from the JSON structure (default: "Records").
 
         Yields:
             dict: Flattened records extracted from the JSON file.
-
-        Raises:
-            FileNotFoundError: If the JSON file is not found.
-            json.JSONDecodeError: If the JSON file contains invalid syntax.
         """
         try:
-            # Open and load the JSON file into a Python dictionary
             with open(file_path, "r") as file:
                 data = json.load(file)
                 logging.info(f"Successfully loaded JSON file: {file_path}")
-        except FileNotFoundError:
-            # Log and re-raise error if the file is missing
-            logging.error(f"JSON file not found: {file_path}")
-            raise
-        except json.JSONDecodeError as e:
-            # Log and re-raise error for invalid JSON syntax
-            logging.error(f"Error parsing JSON file: {e}")
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logging.error(f"Error loading JSON file {file_path}: {e}")
             raise
 
-        # Extract records using the schema tag or fallback to the root of the JSON structure
+        # Auto-detect schema tag if not provided
+        schema_tag = self.schema_tag or self._detect_json_schema_tag(data)
+        logging.info(f"Detected schema tag: {schema_tag}")
+
         records = data.get(schema_tag, data)
 
-        # Flatten and yield each record
         if isinstance(records, list):
             for record in records:
-                for flattened in self._flatten_dict(record):
-                    yield flattened
+                yield from self._flatten_dict(record)
         elif isinstance(records, dict):
-            for flattened in self._flatten_dict(records):
-                yield flattened
+            yield from self._flatten_dict(records)
 
-    def parse_xml_file(self, file_path, schema_tag="Record"):
+    def _parse_xml_file(self, file_path):
         """
         Parses and flattens XML records from a file.
 
         Args:
             file_path (str): Path to the XML file.
-            schema_tag (str): Tag to extract records from the XML structure (default: "Record").
 
         Yields:
             dict: Flattened records extracted from the XML file.
-
-        Raises:
-            FileNotFoundError: If the XML file is not found.
-            ET.ParseError: If the XML file contains invalid syntax.
         """
         try:
-            # Parse the XML file and obtain the root element
             tree = ET.parse(file_path)
             root = tree.getroot()
             logging.info(f"Successfully parsed XML file: {file_path}")
-        except FileNotFoundError:
-            # Log and re-raise error if the file is missing
-            logging.error(f"XML file not found: {file_path}")
-            raise
-        except ET.ParseError as e:
-            # Log and re-raise error for invalid XML syntax
-            logging.error(f"Error parsing XML file: {e}")
+        except (FileNotFoundError, ET.ParseError) as e:
+            logging.error(f"Error loading XML file {file_path}: {e}")
             raise
 
-        def parse_element(element):
-            """
-            Recursively parses an XML element into a dictionary.
+        # Detect schema tag if not provided
+        schema_tag = self.schema_tag or self._detect_xml_schema_tag(root)
+        logging.info(f"Using XML schema tag: {schema_tag}")
 
-            Args:
-                element (xml.etree.ElementTree.Element): The XML element to parse.
-
-            Returns:
-                dict: Parsed representation of the element.
-            """
-            record = {}
-            for child in element:
-                if len(child) > 0:
-                    # Handle nested elements by appending them to a list
-                    if child.tag not in record:
-                        record[child.tag] = []
-                    record[child.tag].append(parse_element(child))
-                else:
-                    # Add leaf node text to the record
-                    record[child.tag] = child.text.strip() if child.text else None
-            return record
-
-        # Extract and flatten records
         for record_element in root.findall(f".//{schema_tag}"):
-            raw_record = parse_element(record_element)
-            flattened_records = self._flatten_dict(raw_record)
-            for record in flattened_records:
-                yield record
+            raw_record = self._parse_xml_element(record_element)
+            yield from self._flatten_dict(raw_record)
+
+    def _parse_xml_element(self, element):
+        """
+        Recursively parses an XML element into a dictionary.
+
+        Args:
+            element (xml.etree.ElementTree.Element): The XML element to parse.
+
+        Returns:
+            dict: Parsed representation of the element.
+        """
+        record = {}
+        for child in element:
+            if len(child) > 0:
+                # Handle nested lists correctly
+                if child.tag not in record:
+                    record[child.tag] = []
+                record[child.tag].append(self._parse_xml_element(child))
+            else:
+                # Add text values to the dictionary
+                record[child.tag] = child.text.strip() if child.text else None
+        return record
+
+    # def parse_xml_file(self, file_path):
+    #     """
+    #     Parses and flattens XML records from a file.
+    #
+    #     Args:
+    #         file_path (str): Path to the XML file.
+    #
+    #     Yields:
+    #         dict: Flattened records extracted from the XML file.
+    #
+    #     Raises:
+    #         FileNotFoundError: If the XML file is not found.
+    #         ET.ParseError: If the XML file contains invalid syntax.
+    #     """
+    #     try:
+    #         # Parse the XML file and obtain the root element
+    #         tree = ET.parse(file_path)
+    #         root = tree.getroot()
+    #         logging.info(f"Successfully parsed XML file: {file_path}")
+    #     except FileNotFoundError:
+    #         # Log and re-raise error if the file is missing
+    #         logging.error(f"XML file not found: {file_path}")
+    #         raise
+    #     except ET.ParseError as e:
+    #         # Log and re-raise error for invalid XML syntax
+    #         logging.error(f"Error parsing XML file: {e}")
+    #         raise
+    #
+    #     def parse_element(element):
+    #         """
+    #         Recursively parses an XML element into a dictionary.
+    #
+    #         Args:
+    #             element (xml.etree.ElementTree.Element): The XML element to parse.
+    #
+    #         Returns:
+    #             dict: Parsed representation of the element.
+    #         """
+    #         record = {}
+    #         for child in element:
+    #             if len(child) > 0:
+    #                 # Handle nested elements by appending them to a list
+    #                 if child.tag not in record:
+    #                     record[child.tag] = []
+    #                 record[child.tag].append(parse_element(child))
+    #             else:
+    #                 # Add leaf node text to the record
+    #                 record[child.tag] = child.text.strip() if child.text else None
+    #         return record
+    #
+    #     # Extract and flatten records
+    #     for record_element in root.findall(f".//{schema_tag}"):
+    #         raw_record = parse_element(record_element)
+    #         flattened_records = self._flatten_dict(raw_record)
+    #         for record in flattened_records:
+    #             yield record
