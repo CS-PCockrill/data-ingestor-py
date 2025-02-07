@@ -41,7 +41,7 @@ class ConnectionManager(ABC):
 class PostgresConnectionManager(ConnectionManager):
     def __init__(self, db_config, schema=None):
         super().__init__(db_config)
-        self.query_builder = PostgresQueryBuilder(db_config["tableName"])
+        self.query_builder = PostgresQueryBuilder(db_config["consumerConfig"]["table_name"])
         self.schema = schema or {}
 
     def connect(self):
@@ -74,7 +74,7 @@ class PostgresConnectionManager(ConnectionManager):
 class OracleConnectionManager(ConnectionManager):
     def __init__(self, db_config):
         super().__init__(db_config)
-        self.query_builder = OracleQueryBuilder(db_config["tableName"])
+        self.query_builder = OracleQueryBuilder(db_config["consumerConfig"]["table_name"])
 
     def connect(self):
         try:
