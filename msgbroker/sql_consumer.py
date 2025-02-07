@@ -12,7 +12,7 @@ from msgbroker.producer_consumer import Consumer
 
 class SQLConsumer(Consumer):
 
-    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping, batch_size=5):
+    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping=None, batch_size=5):
         """
         Initializes the SQLConsumer.
 

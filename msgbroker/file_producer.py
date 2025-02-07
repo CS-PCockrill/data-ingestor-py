@@ -25,15 +25,6 @@ class FileProducer(Producer):
         self.schema_tag = schema_tag  # Auto-detected if None
         self.artifact_name = file_path
 
-    # def __init__(self, maxsize=1000, file_path=None, file_type="json", schema_tag="Records", logger=None, **kwargs):
-    #     super().__init__(logger=logger, **kwargs)
-    #     self.queue = Queue(maxsize=maxsize)
-    #     self.file_path = file_path
-    #     self.file_type = file_type
-    #     self.schema_tag = schema_tag
-    #     self.artifact_name = file_path
-
-
     def _get_files(self):
         """
         Retrieves the list of files to process.

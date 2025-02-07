@@ -126,21 +126,21 @@ def validate_interface_id(interface_id, interface_ids):
         raise ValueError(f"Invalid Interface ID: {interface_id}")
 
 # Determine file_type and schema_tag dynamically based on file extension
-def determine_file_type_and_schema(file_name):
-    file_extension = os.path.splitext(file_name)[1].lower()
-
-    # Define mappings of file extensions to types and schemas
-    file_type_mapping = {
-        ".json": {"file_type": "json", "schema_tag": "Records", "schema": "jsonSchema"},
-        ".xml": {"file_type": "xml", "schema_tag": "Record", "schema": "xmlSchema"},
-        # Add more mappings here if needed
-    }
-
-    # Retrieve file_type and schema_tag or raise an error for unsupported extensions
-    if file_extension in file_type_mapping:
-        return file_type_mapping[file_extension]["file_type"], file_type_mapping[file_extension]["schema_tag"], file_type_mapping[file_extension]["schema"]
-    else:
-        raise ValueError(f"Unsupported file extension: {file_extension}")
+# def determine_file_type_and_schema(file_name):
+#     file_extension = os.path.splitext(file_name)[1].lower()
+#
+#     # Define mappings of file extensions to types and schemas
+#     file_type_mapping = {
+#         ".json": {"file_type": "json", "schema_tag": "Records", "schema": "jsonSchema"},
+#         ".xml": {"file_type": "xml", "schema_tag": "Record", "schema": "xmlSchema"},
+#         # Add more mappings here if needed
+#     }
+#
+#     # Retrieve file_type and schema_tag or raise an error for unsupported extensions
+#     if file_extension in file_type_mapping:
+#         return file_type_mapping[file_extension]["file_type"], file_type_mapping[file_extension]["schema_tag"], file_type_mapping[file_extension]["schema"]
+#     else:
+#         raise ValueError(f"Unsupported file extension: {file_extension}")
 
 def main():
     """
@@ -166,7 +166,7 @@ def main():
     file_path = os.path.join(config["inputDirectory"], file_name)
 
     # Dynamically determine file_type and schema_tag
-    file_type, schema_tag, schema = determine_file_type_and_schema(file_name)
+    # file_type, schema_tag, schema = determine_file_type_and_schema(file_name)
 
     logging.info(f"Processing with producer configuration: {config['producerConfig']}")
 
@@ -192,7 +192,6 @@ def main():
         config["consumerConfig"].update({"logger": processor.logger})
         config["consumerConfig"].update({"connection_manager": DBConnectionFactory.get_connection_manager(config['dbType'], config)
 })
-        config["consumerConfig"].update({"key_column_mapping": config[schema]})
 
         # Create consumer. To create new consumers create subclasses of msgbroker.Consumer, then register new interfaces
         # in config.interfaces_config.INTERFACES
