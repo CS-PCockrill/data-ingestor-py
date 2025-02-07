@@ -22,25 +22,25 @@ class FileProducer(Producer):
         self.schema_tag = schema_tag
         self.artifact_name = file_path
 
-    def set_source(self, file_path, file_type, schema_tag):
-        """
-        Sets the source for the file-based producer.
-
-        Args:
-            file_path (str): Path to the input file.
-            file_type (str): File type, either 'json' or 'xml'.
-            schema_tag (str): Schema tag to extract records.
-        """
-        self.file_path = file_path
-        self.file_type = file_type
-        self.schema_tag = schema_tag
-
-        if os.path.isfile(file_path):
-            self.artifact_name = os.path.basename(file_path)
-        elif os.path.isdir(file_path):
-            self.artifact_name = file_path  # Directory name for logging purposes
-        else:
-            raise ValueError(f"Invalid file path: {file_path}")
+    # def set_source(self, file_path, file_type, schema_tag):
+    #     """
+    #     Sets the source for the file-based producer.
+    #
+    #     Args:
+    #         file_path (str): Path to the input file.
+    #         file_type (str): File type, either 'json' or 'xml'.
+    #         schema_tag (str): Schema tag to extract records.
+    #     """
+    #     self.file_path = file_path
+    #     self.file_type = file_type
+    #     self.schema_tag = schema_tag
+    #
+    #     if os.path.isfile(file_path):
+    #         self.artifact_name = os.path.basename(file_path)
+    #     elif os.path.isdir(file_path):
+    #         self.artifact_name = file_path  # Directory name for logging purposes
+    #     else:
+    #         raise ValueError(f"Invalid file path: {file_path}")
 
     def _get_files(self):
         """

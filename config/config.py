@@ -1,5 +1,7 @@
 from prometheus_client import Counter, Histogram, Summary
 
+# Special marker for file separation used for the start of a new file so there's no side effects with table names between files
+FILE_DELIMITER = "__NEW_FILE__"
 
 # Prometheus metrics definitions
 METRICS = {

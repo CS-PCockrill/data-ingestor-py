@@ -147,3 +147,7 @@ Ensure make is installed on your system to run these commands.
 Python and pip must be installed in both connected and disconnected environments.
 Use the same Python version in both environments to ensure compatibility.
 The offline-package command prepares dependencies specific to the current environment. If requirements change, re-run the command.
+
+# Setup
+
+sudo yum install -y python3 python3-pip python3-virtualenv
