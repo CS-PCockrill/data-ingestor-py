@@ -121,31 +121,30 @@ class ExcelConsumer(Consumer):
             logging.info("Values in batch: %s", values)
             logging.info("Insert query: %s", query)
 
-            with self.conn.cursor() as cur:
-                execute_values(cur, query, values)
-                self.conn.commit()
+            try:
+                self.connection_manager.execute_batch_insert(self.conn, query, values)
+            finally:
+                logging.info(f"Successfully inserted batch of {len(self.batch)} records into {self.table_name}.")
 
-            logging.info(f"Successfully inserted batch of {len(self.batch)} records into {self.table_name}.")
+                self.logger.log_job(
+                    query=query,
+                    values=json.dumps(values),
+                    symbol="GS2001W",
+                    job_name=f"Batch Insert for {self.producer.file_path}",
+                    artifact_name=self.producer.file_path,
+                    job_id=job_id,
+                    success=True,
+                    status="SUCCESS",
+                    end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                )
 
-            self.logger.log_job(
-                query=query,
-                values=json.dumps(values),
-                symbol="GS2001W",
-                job_name=f"Batch Insert for {self.producer.file_path}",
-                artifact_name=self.producer.file_path,
-                job_id=job_id,
-                success=True,
-                status="SUCCESS",
-                end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            )
+                METRICS["records_processed"].inc(len(self.batch))
+                self.batch.clear() # Reset batch after insert
 
-            METRICS["records_processed"].inc(len(self.batch))
         except Exception as e:
             logging.error(f"Error inserting batch into {self.table_name}: {e}")
             self.error = True
             raise
-        finally:
-            self.batch.clear()  # Reset batch after insert
 
     def process_record(self, record):
         """

@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 
 import psycopg2
 import cx_Oracle
+from psycopg2.extras import execute_values
 
 from db.oracle_query_builder import OracleQueryBuilder
 from db.postgres_query_builder import PostgresQueryBuilder
@@ -34,6 +35,13 @@ class ConnectionManager(ABC):
 
         Args:
             conn: The database connection to close.
+        """
+        pass
+
+    @abstractmethod
+    def execute_batch_insert(self, conn, query, values):
+        """
+        Executes a batch insert operation. Must be implemented in subclass.
         """
         pass
 
@@ -71,6 +79,15 @@ class PostgresConnectionManager(ConnectionManager):
         self.query_builder = PostgresQueryBuilder(table_name)
         return self.query_builder
 
+    def execute_batch_insert(self, conn, query, values):
+        """
+        Executes a batch insert operation using `execute_values` for PostgreSQL.
+        """
+        with conn.cursor() as cur:
+            execute_values(cur, query, values)
+            conn.commit()
+            logging.info(f"Successfully inserted {len(values)} records into PostgreSQL.")
+
 class OracleConnectionManager(ConnectionManager):
     def __init__(self, db_config):
         super().__init__(db_config)
@@ -105,3 +122,12 @@ class OracleConnectionManager(ConnectionManager):
     def get_query_builder(self, table_name):
         self.query_builder = OracleQueryBuilder(table_name)
         return self.query_builder
+
+    def execute_batch_insert(self, conn, query, values):
+        """
+        Executes a batch insert operation using `executemany` for Oracle.
+        """
+        with conn.cursor() as cur:
+            cur.executemany(query, values)  # Oracle's batch execution
+            conn.commit()
+            logging.info(f"Successfully inserted {len(values)} records into Oracle.")

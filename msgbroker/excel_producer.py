@@ -1,3 +1,5 @@
+import uuid
+
 from config.config import FILE_DELIMITER
 from msgbroker.producer_consumer import Producer
 
@@ -48,6 +50,10 @@ class ExcelProducer(Producer):
                 data = df.iloc[self.FIRST_RECORD_ROW - 1:].copy()
                 data.columns = column_names
                 data.reset_index(drop=True, inplace=True)
+
+                self.logger.set_context_id(str(uuid.uuid4()))
+                logging.info(
+                    f"Processing file: {file} with Context ID: {self.logger.get_context_id()}")
 
                 # Notify consumer of new file
                 self.produce({"marker": FILE_DELIMITER, "table_name": table_name, "column_names": column_names})

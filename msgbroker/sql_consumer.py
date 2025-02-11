@@ -3,7 +3,6 @@ import json
 import logging
 from threading import Lock
 
-from psycopg2.extras import execute_values
 from tenacity import stop_after_attempt, retry, wait_exponential
 
 from config.config import METRICS, FILE_DELIMITER
@@ -33,63 +32,6 @@ class SQLConsumer(Consumer):
         self.conn = self.connection_manager.connect()
         self.query_builder = self.connection_manager.get_query_builder(table_name)  # Get QueryBuilder from the connection manager
         self.error = False
-
-    # def consume(self):
-    #     """
-    #     Consumes records from the producer and processes them in batches.
-    #     """
-    #     job_id = self.logger.log_job(
-    #         symbol="GS2001W",
-    #         job_name=f"Consume Records for {self.producer.artifact_name}",
-    #         artifact_name=self.producer.artifact_name,
-    #         start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    #         success=False,
-    #         status="IN PROGRESS"
-    #     )
-    #
-    #     try:
-    #         while True:
-    #             record = self.producer.consume()
-    #             if record is None:
-    #                 if self.batch:
-    #                     self._insert_batch()
-    #                 break  # Signal that production is complete
-    #
-    #
-    #             self.batch.append(record)
-    #             if len(self.batch) >= self.batch_size:
-    #                 self._insert_batch()
-    #
-    #     except Exception as e:
-    #         self.logger.log_job(
-    #             symbol="GS2001W",
-    #             job_name=f"Consume Records for {self.producer.artifact_name}",
-    #             artifact_name=self.producer.artifact_name,
-    #             error_message=str(e),
-    #             end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    #             job_id=job_id,
-    #             success=False,
-    #             status="ERROR"
-    #         )
-    #         logging.error(f"SQLConsumer encountered an error while consuming records: {e}")
-    #         METRICS["errors"].inc()
-    #         self.error = True
-    #
-    #     finally:
-    #         # Insert any remaining records in the batch
-    #         if self.batch:
-    #             self._insert_batch()
-    #
-    #         # Mark the job as completed
-    #         self.logger.log_job(
-    #             symbol="GS2001W",
-    #             job_name=f"Consume Records for {self.producer.artifact_name}",
-    #             artifact_name=self.producer.artifact_name,
-    #             job_id=job_id,
-    #             success=not self.error,
-    #             end_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-    #             status="COMPLETED"
-    #         )
 
     def consume(self):
         """
@@ -236,18 +178,14 @@ class SQLConsumer(Consumer):
                 start_time=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             )
 
-            with self.conn.cursor() as cur:
-                # Generate the INSERT query using the QueryBuilder
-                columns = self.batch[0].keys()
-                query = self.query_builder.build_insert_query(columns)
-                values = [[record[col] for col in columns] for record in self.batch]
+            columns = self.batch[0].keys()
+            query = self.query_builder.build_insert_query(columns)
+            values = [[record[col] for col in columns] for record in self.batch]
 
-                logging.info("Values in batch: %s", values)
-                logging.info("Values in query: %s", query)
+            try:
+                self.connection_manager.execute_batch_insert(self.conn, query, values)
 
-                # Execute the query with the batch values
-                execute_values(cur, query, values)
-                self.conn.commit()
+            finally:
                 logging.info(f"Successfully inserted batch of {len(self.batch)} records into {self.table_name}.")
 
                 self.logger.log_job(
