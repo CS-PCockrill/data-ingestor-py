@@ -75,7 +75,11 @@ class FileProducer(Producer):
 
             # Process and enqueue records
             for record in self._process_file(file, file_type):
-                self.produce(record)
+                transformed_record = {
+                    db_column: record.get(json_key)
+                    for json_key, db_column in key_column_mapping.items()
+                }
+                self.produce(transformed_record)
                 METRICS["records_read"].inc()
 
         self.signal_done()
