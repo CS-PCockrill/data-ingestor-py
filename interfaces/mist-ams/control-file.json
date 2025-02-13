@@ -27,14 +27,12 @@
   "errorDefinitionSourceType": "db",
   "errorDefinitionSourceLocation": "error_definitions",
   "host": "localhost",
+  "sid": "oltp",
   "port": 5432,
   "database": "testdb",
   "user": "root",
   "password": "password",
-  "jsonTagName": "Records",
-  "xmlTagName": "Record",
   "sqlBatchSize": 5,
-  "numWorkers": 2,
   "jsonSchema": {
     "user": "USER",
     "dt_created": "DT_CREATED",
@@ -46,7 +44,8 @@
     "local_id": "LOCAL_ID",
     "filename": "FILENAME",
     "fnumber": "FNUMBER",
-    "scan_time": "SCAN_TIME"
+    "scan_time": "SCAN_TIME",
+    "context_id": "CONTEXT_ID"
   },
   "xmlSchema": {
     "user": "USER",
@@ -59,7 +58,8 @@
     "local_id": "LOCAL_ID",
     "filename": "FILENAME",
     "fnumber": "FNUMBER",
-    "scan_time": "SCAN_TIME"
+    "scan_time": "SCAN_TIME",
+    "context_id": "CONTEXT_ID"
   },
   "producerConfig": {},
   "consumerConfig": {

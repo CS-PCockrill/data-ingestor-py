@@ -16,8 +16,9 @@ class FileProducer(Producer):
 
     FILE_TYPES = {"json", "xml"}  # Supported file types
 
-    def __init__(self, maxsize=1000, config=None, file_path=None, file_type=None, schema_tag=None, logger=None, **kwargs):
+    def __init__(self, global_context=None, maxsize=1000, config=None, file_path=None, file_type=None, schema_tag=None, logger=None, **kwargs):
         super().__init__(logger=logger, **kwargs)
+        self.global_context = global_context
         self.queue = Queue(maxsize=maxsize)
         self.config = config
         self.file_path = file_path
@@ -63,14 +64,17 @@ class FileProducer(Producer):
             schema_key = "jsonSchema" if file_type == "json" else "xmlSchema"
             key_column_mapping = self.config[schema_key]
 
-            self.logger.set_context_id(str(uuid.uuid4()))
+            context_id = str(uuid.uuid4())
+            self.logger.set_context_id(context_id)
             logging.info(
                 f"Processing file: {file} with Context ID: {self.logger.get_context_id()} and Schema: {key_column_mapping}")
 
             # Pass metadata first
+            self.global_context.set("key_column_mapping", key_column_mapping)
+            self.global_context.set("filename", file.split("/")[-1])
+            self.global_context.set("context_id", context_id)
             self.produce({
                 "marker": FILE_DELIMITER,
-                "key_column_mapping": key_column_mapping
             })
 
             # Process and enqueue records

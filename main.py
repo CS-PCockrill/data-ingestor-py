@@ -5,6 +5,7 @@ import logging
 from contextlib import contextmanager
 
 from config.interfaces_config import INTERFACES
+from context.global_context import GlobalContext
 from db.connection_factory import DBConnectionFactory
 from fileprocesser.file_processor import FileProcessor
 from fileprocesser.processor_factory import ProcessorFactory
@@ -13,6 +14,7 @@ from logger.logger_factory import LoggerFactory
 from logger.sqllogger import SQLLogger
 from msgbroker.consumer_factory import ConsumerFactory
 from msgbroker.producer_factory import ProducerFactory
+from transformations.context_file_transform import ContextFileTransform
 
 # Configure logger
 logging.basicConfig(
@@ -174,6 +176,7 @@ def main():
         # Create processor. To create new processors create subclasses of fileprocessor.Processor, then register
         # new interfaces in config.interfaces_config.INTERFACES
         processor = ProcessorFactory.create_processor(interface_id, config)
+        global_context = GlobalContext()
 
         # Update producerConfig with computed values. Each key is a parameter in the respective Producer subclass
         # For example: FileProducer(maxsize=1000, file_path=file_path, file_type="json", schema_tag="Records")
@@ -181,6 +184,7 @@ def main():
             "config": config,
             "file_path": file_path,
             "logger": processor.logger,
+            "global_context": global_context,
         })
 
         # Create producer dynamically
@@ -192,6 +196,8 @@ def main():
         config["consumerConfig"].update({"logger": processor.logger})
         config["consumerConfig"].update({"connection_manager": DBConnectionFactory.get_connection_manager(config['dbType'], config)
 })
+        config["consumerConfig"].update({"transformation": ContextFileTransform(global_context=global_context)})
+        config["consumerConfig"].update({"global_context": global_context})
 
         # Create consumer. To create new consumers create subclasses of msgbroker.Consumer, then register new interfaces
         # in config.interfaces_config.INTERFACES

@@ -11,7 +11,7 @@ from msgbroker.producer_consumer import Consumer
 
 class SQLConsumer(Consumer):
 
-    def __init__(self, logger, table_name, producer, connection_manager, key_column_mapping=None, batch_size=5):
+    def __init__(self, global_context, transformation, logger, table_name, producer, connection_manager, key_column_mapping=None, batch_size=5):
         """
         Initializes the SQLConsumer.
 
@@ -22,6 +22,8 @@ class SQLConsumer(Consumer):
             batch_size (int): Number of records to process in a single batch.
         """
         super().__init__(producer)
+        self.global_context = global_context
+        self.transformation = transformation
         self.logger = logger
         self.table_name = table_name
         self.connection_manager = connection_manager
@@ -61,7 +63,7 @@ class SQLConsumer(Consumer):
                         self._insert_batch()  # Flush batch before schema switch
 
                     # Update key-column mapping dynamically
-                    self.key_column_mapping = record["key_column_mapping"]
+                    self.key_column_mapping = self.global_context.get("key_column_mapping")
 
                     self.query_builder = self.connection_manager.get_query_builder(self.table_name)
                     logging.info(
@@ -69,7 +71,7 @@ class SQLConsumer(Consumer):
                     continue  # Skip processing the metadata record
 
                 # Append record to batch
-                self.batch.append(record)
+                self.batch.append(self.transformation.transform(record))
                 if len(self.batch) >= self.batch_size:
                     self._insert_batch()
 

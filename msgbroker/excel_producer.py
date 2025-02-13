@@ -17,7 +17,7 @@ class ExcelProducer(Producer):
     TABLE_NAME_ROW = 4  # Row 4 in Excel (table name)
     FIRST_RECORD_ROW = 5  # Row 5 in Excel (first actual record)
 
-    def __init__(self, maxsize=1000, config=None, file_path="", logger=None, **kwargs):
+    def __init__(self, global_context=None, maxsize=1000, config=None, file_path="", logger=None, **kwargs):
         """
         Initialize the ExcelProducer.
 
@@ -26,6 +26,7 @@ class ExcelProducer(Producer):
             logger (object): Logging utility.
         """
         super().__init__(logger, **kwargs)
+        self.global_context = global_context
         self.config = config
         self.queue = Queue(maxsize=maxsize)
         self.file_path = file_path
@@ -51,12 +52,17 @@ class ExcelProducer(Producer):
                 data.columns = column_names
                 data.reset_index(drop=True, inplace=True)
 
-                self.logger.set_context_id(str(uuid.uuid4()))
+                context_id = str(uuid.uuid4())
+                self.logger.set_context_id(context_id)
                 logging.info(
                     f"Processing file: {file} with Context ID: {self.logger.get_context_id()}")
 
+                self.global_context.set("table_name", table_name)
+                self.global_context.set("column_names", column_names)
+                self.global_context.set("filename", file.split("/")[-1])
+                self.global_context.set("context_id", context_id)
                 # Notify consumer of new file
-                self.produce({"marker": FILE_DELIMITER, "table_name": table_name, "column_names": column_names})
+                self.produce({"marker": FILE_DELIMITER})
 
                 for _, record in data.iterrows():
                     self.produce(record.to_dict())  # Push each row individually

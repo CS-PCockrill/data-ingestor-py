@@ -1,0 +1,83 @@
+{
+  "interfaceID": "MIST", // Unique identifier for this ingestion interface
+  "interfaceType": "MistAMS JSON/XML File", // Descriptive name for the interface
+  "dbType": "postgres", // Supported database types: 'oracle', 'postgres'
+
+  "logsTableName": "SS_LOGS", // Target database table where logs are stored
+  "logsSchema": {
+    // Logs schema mapping: each key represents a log field, and its value is the respective SQL column name
+    "job_name": "job_name", // Name of the ingestion job
+    "job_type": "job_type", // Type of job (e.g., JSON, XML ingestion)
+    "symbol": "symb", // Symbol associated with the log entry
+    "severity": "severity", // Log severity level (e.g., INFO, ERROR)
+    "status": "status", // Processing status (e.g., SUCCESS, FAILURE)
+    "start_time": "start_time", // Timestamp for when the job started
+    "end_time": "end_time", // Timestamp for when the job completed
+    "message": "message", // Log message details
+    "error_message": "error_message", // Captured error message (if any)
+    "query": "query", // SQL query executed (for debugging and replayability)
+    "values": "values", // Values associated with the executed SQL query
+    "table_name": "table_name", // Target table for data insertion
+    "artifact_name": "artifact_name", // Name of the file or data source processed
+    "user_id": "user_id", // User who triggered the job
+    "host_name": "host_name", // Host where the job was executed
+    "duration": "duration", // Duration of the job execution
+    "ctx_id": "ctx_id" // Context ID for tracing related logs
+  },
+
+  "outputDirectory": "interfaces/mist-ams/archive", // Directory where processed input files are moved after processing
+  "inputDirectory": "interfaces/mist-ams/input-files", // Directory where incoming input files are stored before processing
+
+  "errorDefinitionSourceType": "db", // Source type for error definitions ('db' indicates database storage)
+  "errorDefinitionSourceLocation": "error_definitions", // Table name or file where error definitions are stored
+
+  // Database connection settings
+  "host": "localhost", // Database hostname (change for production use)
+  "sid": "oltp",
+  "port": 5432, // Database port (default for PostgreSQL)
+  "database": "testdb", // Name of the database
+  "user": "root", // Database username (consider using environment variables for security)
+  "password": "password", // Database password (consider using a secrets manager for security)
+
+  "sqlBatchSize": 5, // Number of records to insert in a single batch to optimize performance
+
+  "jsonSchema": {
+    // Mapping of JSON keys to their respective SQL column names
+    "user": "USER",
+    "dt_created": "DT_CREATED", // Timestamp when the record was created
+    "dt_submitted": "DT_SUBMITTED", // Timestamp when the record was submitted
+    "ast_name": "AST_NAME", // Asset name associated with the record
+    "location": "LOCATION", // Physical or logical location of the asset
+    "status": "STATUS", // Processing status of the record
+    "json_hash": "JSON_HASH", // Unique hash identifier for the JSON data
+    "local_id": "LOCAL_ID", // Local identifier for the record
+    "filename": "FILENAME", // Name of the input file
+    "fnumber": "FNUMBER", // File number or unique identifier
+    "scan_time": "SCAN_TIME" // Timestamp of when the record was scanned
+  },
+
+  "xmlSchema": {
+    // Mapping of XML keys to their respective SQL column names (same structure as JSON)
+    "user": "USER",
+    "dt_created": "DT_CREATED",
+    "dt_submitted": "DT_SUBMITTED",
+    "ast_name": "AST_NAME",
+    "location": "LOCATION",
+    "status": "STATUS",
+    "json_hash": "JSON_HASH",
+    "local_id": "LOCAL_ID",
+    "filename": "FILENAME",
+    "fnumber": "FNUMBER",
+    "scan_time": "SCAN_TIME"
+  },
+
+  "producerConfig": {}, // Configuration settings for the producer (left empty for now)
+
+  "consumerConfig": {
+    "logger": null, // Logging configuration (null means default logging behavior)
+    "table_name": "SFLW_RECS", // Target database table for storing processed records
+    "producer": null, // Producer instance to use (if applicable)
+    "batch_size": 5, // Number of records processed together in a batch
+    "key_column_mapping": {} // Mapping of source keys to database columns (to be defined as needed)
+  }
+}

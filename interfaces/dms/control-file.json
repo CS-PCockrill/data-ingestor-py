@@ -27,6 +27,7 @@
     "ctx_id": "ctx_id"
   },
   "host": "localhost",
+  "sid": "oltp",
   "port": 5432,
   "database": "testdb",
   "user": "root",

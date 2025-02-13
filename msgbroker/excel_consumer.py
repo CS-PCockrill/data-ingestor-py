@@ -8,7 +8,7 @@ from psycopg2.extras import execute_values  # Efficient bulk insert for PostgreS
 
 class ExcelConsumer(Consumer):
 
-    def __init__(self, logger, producer, connection_manager, batch_size=100, **kwargs):
+    def __init__(self, global_context, transformation, logger, producer, connection_manager, batch_size=100, **kwargs):
         """
         Initialize the ExcelConsumer.
 
@@ -17,6 +17,8 @@ class ExcelConsumer(Consumer):
             output_file (str): Path to the output CSV file.
         """
         super().__init__(producer)
+        self.global_context = global_context
+        self.transformation = transformation
         self.connection_manager = connection_manager
         self.logger = logger
         self.consumed_records = []
@@ -57,13 +59,13 @@ class ExcelConsumer(Consumer):
                     if self.batch:
                         self._insert_batch()  # Ensure previous batch is committed
 
-                    self.table_name = record["table_name"]
-                    self.column_names = record["column_names"]
+                    self.table_name = self.global_context.get("table_name")
+                    self.column_names = self.global_context.get("column_names")
                     self.query_builder = self.connection_manager.get_query_builder(self.table_name)
                     logging.info(f"Switching to new file: Table={self.table_name}, Columns={self.column_names}")
                     continue  # Skip marker and move to next record
 
-                self.batch.append(record)
+                self.batch.append(self.transformation.transform(record))
                 if len(self.batch) >= self.batch_size:
                     self._insert_batch()
 
